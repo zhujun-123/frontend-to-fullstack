@@ -1,0 +1,91 @@
+---
+title: JavaScript Array 与 Go Slice
+description: 理解动态数组表象背后的长度、容量、共享底层数组与重新分配。
+type: mapping
+summary: JavaScript Array 和 Go Slice 都方便处理有序集合，但 Slice 是一个指向底层数组的描述符，复制 Slice 不等于复制数据。
+prerequisites:
+  - JavaScript Array
+  - Go 基础类型
+related:
+  - Struct 与 Map
+  - 数据竞争
+sourceRefs:
+  - title: Go Blog - Go Slices usage and internals
+    url: https://go.dev/blog/slices-intro
+  - title: Learn Go with Tests - Arrays and slices
+    url: https://github.com/quii/learn-go-with-tests/blob/main/arrays-and-slices.md
+  - title: Golang for Node.js Developers - Arrays
+    url: https://github.com/miguelmota/golang-for-nodejs-developers#arrays
+---
+
+## 为什么看起来很像
+
+```ts
+const users = ['Ada', 'Linus'];
+users.push('Rob');
+```
+
+```go
+users := []string{"Ada", "Linus"}
+users = append(users, "Rob")
+```
+
+两段代码都在向有序集合末尾增加元素，但 Go 中真正发生的事情更值得关注。
+
+## Array 与 Slice 不是一回事
+
+```go
+var fixed [3]string
+dynamic := []string{"Ada", "Linus"}
+```
+
+- `[3]string` 是长度固定的 Array，长度也是类型的一部分。
+- `[]string` 是 Slice，保存指向底层数组的指针、长度和容量。
+- 实际业务中更常使用 Slice，但 Array 是理解 Slice 的基础。
+
+<Mermaid
+  chart={`flowchart LR
+    S[Slice: pointer / len / cap] --> A[Underlying Array]
+    A --> E1[Ada]
+    A --> E2[Linus]
+    A --> E3[empty capacity]`}
+/>
+
+## `append` 可能改变共享关系
+
+当容量足够时，`append` 可以继续写入原来的底层数组；容量不足时，会申请新的数组并复制数据。因此不能只看 Slice 变量是否不同来判断数据是否独立。
+
+```go
+base := []int{1, 2, 3, 4}
+left := base[:2]
+left = append(left, 99)
+
+fmt.Println(base) // 可能得到 [1 2 99 4]
+```
+
+## 前端开发者常见误区
+
+### 误区一：赋值就是复制集合
+
+```go
+copied := original
+```
+
+这只复制 Slice 描述符，两者仍可能共享底层数组。需要独立数据时，应当显式复制。
+
+```go
+copied := append([]int(nil), original...)
+```
+
+### 误区二：多个 Goroutine 修改不同 Slice 就一定安全
+
+两个 Slice 可能仍然指向同一底层数组。并发设计时，需要关注真正共享的是哪块内存，而不是变量名称是否不同。
+
+## 动手练习
+
+写一个测试，分别验证以下场景：
+
+1. Slice 赋值后的修改是否影响原数据。
+2. 子 Slice 执行 append 前后是否还共享底层数组。
+3. 使用 `copy` 创建独立 Slice。
+4. 使用 `go test -race` 检查并发写入。

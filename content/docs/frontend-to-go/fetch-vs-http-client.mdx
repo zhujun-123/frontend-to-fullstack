@@ -1,0 +1,80 @@
+---
+title: Fetch 与 http.Client
+description: 对照浏览器 Fetch 和 Go HTTP Client 的请求、状态码、超时、连接复用与资源释放。
+type: mapping
+summary: 两者都会在网络层失败时返回错误，但非 2xx 响应仍然需要业务代码主动判断；Go 还必须正确复用 Client 并关闭响应体。
+prerequisites:
+  - HTTP 状态码
+  - AbortController 与 Context
+related:
+  - HTTP Handler
+  - 重试与幂等
+sourceRefs:
+  - title: MDN - Using the Fetch API
+    url: https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch
+  - title: Go Package net/http
+    url: https://pkg.go.dev/net/http
+  - title: Go Package io
+    url: https://pkg.go.dev/io
+---
+
+## 两边都要主动检查状态码
+
+```ts
+const response = await fetch('/api/users');
+if (!response.ok) {
+  throw new Error(`request failed: ${response.status}`);
+}
+```
+
+```go
+response, err := client.Do(request)
+if err != nil {
+    return err
+}
+defer response.Body.Close()
+
+if response.StatusCode < 200 || response.StatusCode >= 300 {
+    return fmt.Errorf("request failed: %s", response.Status)
+}
+```
+
+Fetch 遇到 404 或 500 时通常不会自动 reject，Go `Client.Do` 也会正常返回 Response。网络失败和业务 HTTP 失败是两个不同层次。
+
+## Go 侧多出来的生命周期责任
+
+### 复用 Client
+
+不要为每个请求创建新的 Client 和 Transport。复用它们才能复用连接池，减少握手和端口消耗。
+
+```go
+var client = &http.Client{
+    Timeout: 3 * time.Second,
+}
+```
+
+### 关闭 Response Body
+
+读取完成后关闭 Body，连接才有机会被正常复用。对于需要复用连接的场景，还应当按照协议和数据量决定是否完整读取响应体。
+
+### 传播 Context
+
+```go
+request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+```
+
+上游请求取消时，下游 HTTP 调用也应当停止，而不是继续占用连接和 Goroutine。
+
+## 自动重试不是默认正确
+
+GET 等幂等请求在特定错误下可以重试，但 POST、扣费、创建订单等操作可能重复产生副作用。重试设计必须和幂等键、超时预算以及服务端处理状态一起考虑。
+
+## 动手练习
+
+编写一个 HTTP Client：
+
+1. 总超时三秒。
+2. 非 2xx 返回包含状态码的错误。
+3. 限制最大响应体大小。
+4. 记录 DNS、连接、首字节和总耗时。
+5. 仅对明确幂等的请求进行有限重试。

@@ -3,8 +3,11 @@
   "defaultOpen": true,
   "pages": [
     "index",
+    "array-vs-slice",
     "event-loop-vs-scheduler",
     "promise-vs-goroutine",
+    "abort-controller-vs-context",
+    "fetch-vs-http-client",
     "typescript-interface-vs-go-interface",
     "error-model"
   ]

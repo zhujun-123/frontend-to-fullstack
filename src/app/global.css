@@ -313,6 +313,301 @@ html > body[data-scroll-locked] {
   margin: 0 auto;
 }
 
+.mapping-explorer {
+  display: grid;
+  gap: 24px;
+  margin: 28px 0 60px;
+}
+
+.mapping-progress {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.8fr) minmax(260px, 2fr);
+  align-items: end;
+  gap: 32px;
+  padding: 24px;
+  border: 1px solid var(--color-fd-border);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 8% 0%, color-mix(in srgb, var(--site-accent) 18%, transparent), transparent 38%),
+    var(--color-fd-card);
+}
+
+.mapping-overline {
+  color: var(--color-fd-muted-foreground);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.mapping-progress strong {
+  display: block;
+  margin-top: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 32px;
+}
+
+.mapping-progress p {
+  margin-top: 2px;
+  color: var(--color-fd-muted-foreground);
+  font-size: 12px;
+}
+
+.mapping-progress-track {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-fd-muted);
+}
+
+.mapping-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--site-accent);
+  transition: width 220ms ease;
+}
+
+.mapping-toolbar {
+  display: grid;
+  gap: 14px;
+}
+
+.mapping-search {
+  display: grid;
+  gap: 8px;
+}
+
+.mapping-search span {
+  color: var(--color-fd-muted-foreground);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mapping-search input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--color-fd-border);
+  border-radius: 10px;
+  outline: none;
+  background: var(--color-fd-background);
+  font-size: 14px;
+}
+
+.mapping-search input:focus {
+  border-color: var(--color-fd-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-fd-primary) 14%, transparent);
+}
+
+.mapping-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mapping-filter-group button,
+.mapping-card-actions button {
+  border: 1px solid var(--color-fd-border);
+  border-radius: 999px;
+  background: var(--color-fd-background);
+  color: var(--color-fd-muted-foreground);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.mapping-filter-group button {
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.mapping-filter-group button:hover,
+.mapping-filter-group button.is-active {
+  border-color: var(--color-fd-primary);
+  background: color-mix(in srgb, var(--color-fd-primary) 10%, transparent);
+  color: var(--color-fd-foreground);
+}
+
+.mapping-relation-filter button.relation-same,
+.mapping-relation.relation-same {
+  border-color: color-mix(in srgb, #3fb950 52%, var(--color-fd-border));
+  color: #3fb950;
+}
+
+.mapping-relation-filter button.relation-partial,
+.mapping-relation.relation-partial {
+  border-color: color-mix(in srgb, #d29922 55%, var(--color-fd-border));
+  color: #d29922;
+}
+
+.mapping-relation-filter button.relation-dangerous,
+.mapping-relation.relation-dangerous {
+  border-color: color-mix(in srgb, #f85149 55%, var(--color-fd-border));
+  color: #f85149;
+}
+
+.mapping-result-summary {
+  color: var(--color-fd-muted-foreground);
+  font-size: 13px;
+}
+
+.mapping-result-summary strong {
+  color: var(--color-fd-foreground);
+}
+
+.mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mapping-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 18px;
+  border: 1px solid var(--color-fd-border);
+  border-radius: 14px;
+  background: var(--color-fd-card);
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.mapping-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--color-fd-primary) 55%, var(--color-fd-border));
+}
+
+.mapping-card.is-learned {
+  border-color: color-mix(in srgb, var(--site-accent) 52%, var(--color-fd-border));
+}
+
+.mapping-card-meta,
+.mapping-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mapping-card-meta {
+  color: var(--color-fd-muted-foreground);
+  font-size: 11px;
+}
+
+.mapping-relation {
+  padding: 3px 7px;
+  border: 1px solid;
+  border-radius: 999px;
+  font-weight: 650;
+}
+
+.mapping-concepts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.mapping-concepts > div {
+  min-width: 0;
+}
+
+.mapping-concepts span:not(.mapping-arrow) {
+  display: block;
+  color: var(--color-fd-muted-foreground);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
+.mapping-concepts strong {
+  display: block;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.mapping-arrow {
+  color: var(--color-fd-primary);
+  font-size: 20px;
+}
+
+.mapping-explanation {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  color: var(--color-fd-muted-foreground);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.mapping-explanation p {
+  margin: 0;
+}
+
+.mapping-boundary {
+  padding-top: 10px;
+  border-top: 1px solid var(--color-fd-border);
+}
+
+.mapping-boundary span {
+  margin-right: 7px;
+  color: var(--color-fd-foreground);
+  font-weight: 700;
+}
+
+.mapping-card-actions {
+  margin-top: auto;
+  padding-top: 18px;
+}
+
+.mapping-card-actions button {
+  min-height: 31px;
+  padding: 0 10px;
+}
+
+.mapping-card-actions button:hover,
+.mapping-card-actions button.is-complete {
+  border-color: var(--site-accent);
+  color: color-mix(in srgb, var(--site-accent) 80%, var(--color-fd-foreground));
+}
+
+.mapping-card-actions a,
+.mapping-card-actions > span {
+  font-size: 12px;
+}
+
+.mapping-card-actions a {
+  color: var(--color-fd-primary);
+  font-weight: 650;
+}
+
+.mapping-card-actions > span {
+  color: var(--color-fd-muted-foreground);
+}
+
+.mapping-empty {
+  padding: 40px 20px;
+  border: 1px dashed var(--color-fd-border);
+  border-radius: 14px;
+  text-align: center;
+}
+
+.mapping-empty p {
+  margin-top: 6px;
+  color: var(--color-fd-muted-foreground);
+  font-size: 13px;
+}
+
 @media (max-width: 800px) {
   .hero-section {
     min-height: auto;
@@ -347,5 +642,13 @@ html > body[data-scroll-locked] {
 
   .entry-card {
     min-height: 300px;
+  }
+
+  .mapping-progress {
+    grid-template-columns: 1fr;
+  }
+
+  .mapping-grid {
+    grid-template-columns: 1fr;
   }
 }

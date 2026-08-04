@@ -1,6 +1,6 @@
 {
   "name": "frontend-to-fullstack",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "面向前端开发者的全栈学习知识库，重点建立前端原理与 Go 原理之间的映射。",
   "scripts": {

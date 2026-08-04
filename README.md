@@ -7,8 +7,13 @@
 - 从真实接口修改开始的全栈学习路线
 - Event Loop → Go Scheduler
 - Promise → Goroutine / Channel / Context
+- JavaScript Array → Go Array / Slice
+- AbortController → Context
+- Fetch → `net/http.Client`
 - TypeScript Interface → Go Interface
 - try/catch → Go error
+- 30 条可搜索、可筛选的结构化映射
+- 基于 localStorage 的学习进度
 - 经过许可证筛选的 GitHub 学习资源
 
 ## 技术栈
@@ -50,3 +55,5 @@ pnpm build
 - `sourceRefs`：参考来源
 
 第三方资料只作为事实来源和学习索引，正文需要独立编写，并遵守对应许可证。
+
+贡献新内容前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。

@@ -1,0 +1,76 @@
+---
+title: AbortController 与 Context
+description: 从取消一次 Fetch 请求，理解服务端如何把超时和取消信号传播到整条调用链。
+type: mapping
+summary: AbortController 通常取消一个前端异步操作；Context 把取消、超时和截止时间从请求入口传播到数据库与下游服务。
+prerequisites:
+  - Fetch API
+  - Go Goroutine
+related:
+  - Promise 与 Goroutine
+  - Fetch 与 http.Client
+sourceRefs:
+  - title: MDN - AbortController
+    url: https://developer.mozilla.org/en-US/docs/Web/API/AbortController
+  - title: Go Blog - Go Concurrency Patterns Context
+    url: https://go.dev/blog/context
+  - title: Go Package context
+    url: https://pkg.go.dev/context
+---
+
+## 前端：取消一个操作
+
+```ts
+const controller = new AbortController();
+
+fetch('/api/users', { signal: controller.signal });
+controller.abort();
+```
+
+AbortController 发出取消信号，支持该 Signal 的 API 会停止后续工作。
+
+## Go：取消整条请求链路
+
+```go
+ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+defer cancel()
+
+user, err := service.GetUser(ctx, userID)
+```
+
+Context 通常从 HTTP 请求开始，继续传给 Service、Repository、数据库驱动和下游 HTTP 请求。
+
+<Mermaid
+  chart={`flowchart LR
+    H[HTTP Handler] --> S[Service]
+    S --> D[Database]
+    S --> U[Upstream API]
+    C[Context cancellation] -.-> H
+    H -. propagate .-> S
+    S -. propagate .-> D
+    S -. propagate .-> U`}
+/>
+
+## 类比成立的部分
+
+- 都通过显式信号取消正在进行的工作。
+- 任务必须主动支持取消，信号本身不能强行终止任意代码。
+- 取消通常是一种正常控制流，不应当被记录成未知系统错误。
+
+## Context 额外解决的问题
+
+- Deadline：任务最晚什么时候结束。
+- Timeout：最多允许执行多长时间。
+- 传播：父任务取消后，所有子任务一起收到通知。
+- 请求范围值：少量跨边界元数据，例如 Trace ID；不应用来传业务配置。
+
+## 使用边界
+
+- Context 应当作为函数第一个参数向下传递。
+- 不要把 Context 长期保存在 Struct 字段中。
+- 调用 `WithCancel`、`WithTimeout` 后要调用返回的 `cancel`。
+- 不要为了“代码方便”在中途换成 `context.Background()`，否则会切断取消链路。
+
+## 动手练习
+
+实现一个两秒超时的接口，内部同时访问数据库和一个下游 HTTP 服务。客户端断开连接后，确认两个下游任务都能尽快结束。
