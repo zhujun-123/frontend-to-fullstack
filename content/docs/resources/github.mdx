@@ -1,0 +1,47 @@
+---
+title: GitHub 资源库
+description: 用于建立前端到 Go 映射、补充 Go 原理和设计实践的开源仓库。
+type: resource
+summary: 没有一个仓库能独立承担全部内容，需要组合映射目录、权威原理、实践任务和生产规范。
+related:
+  - 前端原理映射 Go 原理
+  - 内容许可证
+sourceRefs:
+  - title: Golang for Node.js Developers
+    url: https://github.com/miguelmota/golang-for-nodejs-developers
+  - title: 33 JavaScript Concepts
+    url: https://github.com/leonardomso/33-js-concepts
+  - title: Learn Go with Tests
+    url: https://github.com/quii/learn-go-with-tests
+---
+
+## 推荐组合
+
+| 仓库 | 在知识库中的角色 | 使用方式 |
+| --- | --- | --- |
+| [golang-for-nodejs-developers](https://github.com/miguelmota/golang-for-nodejs-developers) | 建立初始映射目录 | MIT；仓库已归档，需要使用新文档校验 |
+| [33-js-concepts](https://github.com/leonardomso/33-js-concepts) | 建立前端原理目录 | MIT；适合作为映射左侧索引 |
+| [learn-go-with-tests](https://github.com/quii/learn-go-with-tests) | 设计练习与验证任务 | MIT；覆盖并发、Context、HTTP 和测试 |
+| [ultimate-go](https://github.com/hoanhan101/ultimate-go) | Go 语言机制和图解 | Apache-2.0；用于补充运行时理解 |
+| [uber-go/guide](https://github.com/uber-go/guide) | 生产编码规范 | Apache-2.0；用于增加工程边界和常见错误 |
+| [go-patterns](https://github.com/tmrts/go-patterns) | Go 惯用模式 | Apache-2.0；避免照搬前端设计模式 |
+
+## 只作为查证和外链
+
+以下资料质量很高，但许可证不适合直接批量复制或改编：
+
+- [Go 101](https://github.com/go101/go101)：用于核对 Go 类型、语义和性能细节。
+- [Go 语言原本](https://github.com/golang-design/under-the-hood)：用于理解调度器、内存、编译器和工具链。
+- [roadmap.sh](https://roadmap.sh/backend)：用于参考主题目录和学习层次。
+- [You Don't Know JS](https://github.com/getify/You-Dont-Know-JS)：用于查证 JavaScript 语言机制。
+
+## 内容生成规则
+
+每篇文章至少需要经过四步：
+
+1. 从前端知识目录选取一个熟悉概念。
+2. 找到对应的 Go 机制，并标记类比成立范围。
+3. 使用 Go 官方文档或者一手设计资料校验结论。
+4. 加入可以运行的练习和真实工程问题。
+
+网站只记录重新组织和独立撰写的内容，不把第三方仓库正文直接复制进来。

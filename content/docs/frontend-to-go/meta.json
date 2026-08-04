@@ -1,0 +1,11 @@
+{
+  "title": "前端 → Go 原理映射",
+  "defaultOpen": true,
+  "pages": [
+    "index",
+    "event-loop-vs-scheduler",
+    "promise-vs-goroutine",
+    "typescript-interface-vs-go-interface",
+    "error-model"
+  ]
+}

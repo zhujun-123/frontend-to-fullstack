@@ -1,0 +1,43 @@
+---
+title: 前端原理映射 Go 原理
+description: 从熟悉的 JavaScript、TypeScript 和浏览器概念，迁移到 Go 的语言与运行时模型。
+type: overview
+summary: 类比用于降低理解成本，但每个类比都必须同时说明成立范围和失效边界。
+related:
+  - 全栈学习路线
+  - Go 并发模型
+---
+
+## 映射不是翻译
+
+“Promise 对应 Goroutine”只说对了一小部分。它们都能参与并发任务，但 Promise 表示未来结果，Goroutine 表示一个正在独立执行的函数。真正完整的映射还需要 Channel、WaitGroup、errgroup 和 Context。
+
+因此，每个专题都使用三种关系标记：
+
+| 关系 | 含义 |
+| --- | --- |
+| 同一抽象 | 解决的问题基本一致，可以直接迁移已有认知 |
+| 部分类比 | 能帮助入门，但运行机制或者约束不同 |
+| 危险类比 | 表面相似，直接照搬会产生错误设计 |
+
+## 首批专题
+
+<Cards>
+  <Card title="Event Loop 与 Go Scheduler" description="同样是任务调度，为什么运行模型完全不同？" href="/docs/frontend-to-go/event-loop-vs-scheduler" />
+  <Card title="Promise 与 Goroutine" description="任务、结果、通信、取消分别由谁负责？" href="/docs/frontend-to-go/promise-vs-goroutine" />
+  <Card title="TypeScript Interface 与 Go Interface" description="都具有结构化特征，但类型信息存在于不同阶段。" href="/docs/frontend-to-go/typescript-interface-vs-go-interface" />
+  <Card title="try/catch 与 Go error" description="从异常捕获转向显式错误流。" href="/docs/frontend-to-go/error-model" />
+</Cards>
+
+## 后续映射计划
+
+- Array → Array / Slice
+- Object → Struct / Map
+- Class → Struct / Method / Embedding
+- AbortController → Context
+- Web Worker → Goroutine
+- Fetch → `net/http.Client`
+- Express Middleware → Go HTTP Middleware
+- Jest / Vitest → `testing`
+- DevTools Performance → Benchmark / pprof
+- Redux / Zustand → 进程状态 / 数据库 / Redis

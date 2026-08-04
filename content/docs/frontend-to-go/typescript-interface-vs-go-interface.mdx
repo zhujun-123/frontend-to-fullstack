@@ -1,0 +1,52 @@
+---
+title: TypeScript Interface 与 Go Interface
+description: 两种结构化类型能力看起来相似，但存在于不同的运行阶段。
+type: mapping
+summary: 两者都允许类型在没有显式声明关系时满足契约，但 TypeScript 类型会被擦除，Go Interface 会参与编译和运行时行为。
+prerequisites:
+  - TypeScript 结构化类型
+  - Go 方法定义
+related:
+  - Struct 与 Class
+  - 组合优于继承
+sourceRefs:
+  - title: TypeScript Handbook - Object Types
+    url: https://www.typescriptlang.org/docs/handbook/2/objects.html
+  - title: Learn Go with Tests - Structs, Methods and Interfaces
+    url: https://github.com/quii/learn-go-with-tests
+  - title: Effective Go - Interfaces
+    url: https://go.dev/doc/effective_go#interfaces
+---
+
+## 相似点：不要求显式声明实现关系
+
+```ts
+interface Writer {
+  write(data: string): void;
+}
+
+const logger = {
+  write(data: string) {
+    console.log(data);
+  },
+};
+```
+
+```go
+type Writer interface {
+    Write([]byte) (int, error)
+}
+```
+
+只要具体类型拥有匹配的方法集合，就能够满足 Go Interface，不需要写 `implements`。
+
+## 关键差异
+
+- TypeScript 类型主要用于编译期检查，输出 JavaScript 后接口会被擦除。
+- Go Interface 是运行时值的一部分，包含动态类型和动态值。
+- Go 的方法接收者是值还是指针，会影响方法集合以及是否满足接口。
+- Go 更倾向于在使用方定义小接口，而不是提前设计庞大的公共接口。
+
+## 从前端思维迁移
+
+不要把一个 TypeScript 大型 DTO Interface 原样搬成 Go Interface。数据结构通常应该使用 Struct；Interface 更适合描述行为边界，例如存储、发送、读取或者计费能力。

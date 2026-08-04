@@ -1,0 +1,37 @@
+{
+  "name": "frontend-to-fullstack",
+  "version": "0.1.0",
+  "private": true,
+  "description": "面向前端开发者的全栈学习知识库，重点建立前端原理与 Go 原理之间的映射。",
+  "scripts": {
+    "build": "next build --webpack",
+    "dev": "next dev --webpack",
+    "start": "next start",
+    "types:check": "next typegen && tsc --noEmit",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "cnfast": "^0.1.0",
+    "fumadocs-core": "16.14.0",
+    "fumadocs-mdx": "15.2.2",
+    "fumadocs-ui": "npm:@fumadocs/base-ui@16.14.0",
+    "lucide-react": "^1.27.0",
+    "mermaid": "^11.12.2",
+    "next": "16.2.12",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/mdx": "^2.0.14",
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "postcss": "^8.5.24",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "16.2.12"
+  }
+}

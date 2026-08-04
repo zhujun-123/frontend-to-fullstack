@@ -1,0 +1,55 @@
+---
+title: try/catch 与 Go error
+description: 从异常捕获模型迁移到显式错误返回和分层处理。
+type: mapping
+summary: Go 把可预期失败放进普通控制流；panic 只应处理当前流程无法继续的异常状态。
+prerequisites:
+  - JavaScript Error
+  - Go 多返回值
+related:
+  - HTTP 错误响应
+  - 日志与可观测性
+sourceRefs:
+  - title: Golang for Node.js Developers - Errors
+    url: https://github.com/miguelmota/golang-for-nodejs-developers
+  - title: Go Blog - Error handling and Go
+    url: https://go.dev/blog/error-handling-and-go
+  - title: Uber Go Style Guide - Errors
+    url: https://github.com/uber-go/guide
+---
+
+## JavaScript 的常见写法
+
+```ts
+try {
+  const user = await getUser(id);
+  return user;
+} catch (error) {
+  logger.error(error);
+  throw error;
+}
+```
+
+## Go 的常见写法
+
+```go
+user, err := getUser(ctx, id)
+if err != nil {
+    return User{}, fmt.Errorf("get user %s: %w", id, err)
+}
+
+return user, nil
+```
+
+## 服务端真正需要解决的不是“捕获”
+
+错误在不同层有不同职责：
+
+- Repository：保留数据库或者外部依赖的错误原因。
+- Service：增加业务上下文，识别可重试和不可重试错误。
+- Handler：转换成稳定的状态码和响应体。
+- Middleware：统一记录请求 ID、耗时和未处理错误。
+
+## `panic/recover` 不等于 `throw/catch`
+
+参数错误、记录不存在、依赖超时等都是业务运行中可预期的情况，应当返回 `error`。`panic` 更适合表示程序进入了无法继续保证正确性的状态，或者在进程边界防止单次请求让整个服务崩溃。

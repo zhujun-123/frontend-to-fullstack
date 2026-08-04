@@ -1,0 +1,53 @@
+---
+title: Event Loop 与 Go Scheduler
+description: 从浏览器和 Node.js 的事件循环，理解 Go 如何调度 Goroutine。
+type: mapping
+summary: 两者都在调度任务，但事件循环围绕队列推进，Go Scheduler 会把大量 Goroutine 调度到多个系统线程。
+prerequisites:
+  - JavaScript 调用栈
+  - 宏任务与微任务
+related:
+  - Promise 与 Goroutine
+  - Web Worker 与 Goroutine
+sourceRefs:
+  - title: 33 JavaScript Concepts - Event Loop
+    url: https://github.com/leonardomso/33-js-concepts
+  - title: Go 语言原本 - 调度器
+    url: https://github.com/golang-design/under-the-hood
+  - title: The Go Memory Model
+    url: https://go.dev/ref/mem
+---
+
+## 共同抽象：谁来决定下一段代码何时执行
+
+前端开发者熟悉调用栈、任务队列和微任务队列。JavaScript 运行时在当前调用栈清空后，继续处理排队任务。
+
+Go 中也存在调度，但调度单位变成了 Goroutine。运行时会把大量 Goroutine 分配到可用的执行资源上。
+
+<Mermaid
+  chart={`flowchart TB
+    subgraph JS[JavaScript Event Loop]
+      J1[Call Stack] --> J2[Microtask Queue]
+      J2 --> J3[Task Queue]
+    end
+    subgraph GO[Go Scheduler]
+      G1[Many Goroutines] --> G2[Logical Processors]
+      G2 --> G3[OS Threads]
+    end`}
+/>
+
+## 类比成立的部分
+
+- 都不需要业务代码直接管理每一次底层线程切换。
+- 阻塞当前执行资源会影响其他任务获得执行机会。
+- 都需要理解任务排队、调度时机和长任务影响。
+
+## 类比失效的部分
+
+- JavaScript 回调通常在同一事件循环线程中依次运行；Go 的 Goroutine 可能在不同线程上运行。
+- JavaScript 普通对象很少遇到多线程同时写；Go 的共享内存可能产生真实的数据竞争。
+- Goroutine 调度并不承诺固定顺序，不能依赖“先启动就先完成”。
+
+## 前端开发者最容易踩的坑
+
+把 Goroutine 当作“不需要关心并发安全的异步回调”。一旦多个 Goroutine 读写同一份数据，就需要通过 Channel、Mutex、Atomic 或所有权边界保证正确性。

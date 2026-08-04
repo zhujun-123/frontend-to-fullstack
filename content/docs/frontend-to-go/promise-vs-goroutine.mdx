@@ -1,0 +1,67 @@
+---
+title: Promise 与 Goroutine
+description: 区分异步任务、未来结果、并发通信和取消机制。
+type: mapping
+summary: Promise 同时承载状态和结果；Goroutine 只负责执行，结果、错误、等待和取消需要使用其他机制组合。
+prerequisites:
+  - Promise 与 async/await
+  - Go 函数和 error
+related:
+  - Event Loop 与 Go Scheduler
+  - Context
+  - Channel
+sourceRefs:
+  - title: Golang for Node.js Developers
+    url: https://github.com/miguelmota/golang-for-nodejs-developers
+  - title: Learn Go with Tests - Concurrency
+    url: https://github.com/quii/learn-go-with-tests
+  - title: Go Concurrency Patterns - Context
+    url: https://go.dev/blog/context
+---
+
+## JavaScript
+
+```ts
+const users = await Promise.all(ids.map((id) => fetchUser(id)));
+```
+
+Promise 表示一个未来会成功或者失败的结果，`Promise.all` 负责等待多个结果汇总。
+
+## Go
+
+```go
+group, ctx := errgroup.WithContext(ctx)
+
+for _, id := range ids {
+    id := id
+    group.Go(func() error {
+        return fetchUser(ctx, id)
+    })
+}
+
+if err := group.Wait(); err != nil {
+    return err
+}
+```
+
+这里至少包含四个独立职责：
+
+| 职责 | Go 中的机制 |
+| --- | --- |
+| 启动并发任务 | Goroutine |
+| 等待多个任务 | WaitGroup / errgroup |
+| 传递结果 | 返回值、Channel 或受保护的共享数据 |
+| 取消和超时 | Context |
+
+## 危险类比
+
+“启动 Goroutine 就等于返回 Promise”是错误的。Goroutine 没有内置的完成状态、返回结果和异常传播。如果生命周期没有被管理，还可能出现泄漏、任务失控或者请求已经结束但后台工作仍在继续。
+
+## 动手练习
+
+实现一个接口，并发请求三个内部服务：
+
+1. 总超时时间为两秒。
+2. 任意服务失败后取消其他请求。
+3. 限制最大并发数量。
+4. 日志中记录每个子请求的耗时。
