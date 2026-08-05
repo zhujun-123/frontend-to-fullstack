@@ -78,7 +78,7 @@ export function MappingExplorer() {
     <section className="mapping-explorer">
       <div className="mapping-progress">
         <div>
-          <span className="mapping-overline">LEARNING PROGRESS</span>
+          <span className="mapping-overline">学习进度</span>
           <strong>{ready ? `${learnedCount} / ${frontendGoMappings.length}` : '—'}</strong>
           <p>已理解并确认边界的映射</p>
         </div>
@@ -150,14 +150,14 @@ export function MappingExplorer() {
 
               <div className="mapping-concepts">
                 <div>
-                  <span>FRONTEND</span>
+                  <span>前端认知</span>
                   <strong>{item.frontend}</strong>
                 </div>
                 <span className="mapping-arrow" aria-hidden="true">
                   →
                 </span>
                 <div>
-                  <span>GO</span>
+                  <span>Go 对应</span>
                   <strong>{item.go}</strong>
                 </div>
               </div>

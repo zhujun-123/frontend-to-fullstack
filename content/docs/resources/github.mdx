@@ -1,9 +1,10 @@
 ---
 title: GitHub 资源库
-description: 用于建立前端到 Go 映射、补充 Go 原理和设计实践的开源仓库。
+description: 用于建立前端映射、完成 Go 后端实践、搭建部署与可观测性实验的开源仓库。
 type: resource
 summary: 没有一个仓库能独立承担全部内容，需要组合映射目录、权威原理、实践任务和生产规范。
 related:
+  - 官方文档索引
   - 前端原理映射 Go 原理
   - 内容许可证
 sourceRefs:
@@ -25,6 +26,18 @@ sourceRefs:
 | [ultimate-go](https://github.com/hoanhan101/ultimate-go) | Go 语言机制和图解 | Apache-2.0；用于补充运行时理解 |
 | [uber-go/guide](https://github.com/uber-go/guide) | 生产编码规范 | Apache-2.0；用于增加工程边界和常见错误 |
 | [go-patterns](https://github.com/tmrts/go-patterns) | Go 惯用模式 | Apache-2.0；避免照搬前端设计模式 |
+
+## 全链路实践仓库
+
+| 仓库 | 适合验证什么 | 使用建议 |
+| --- | --- | --- |
+| [techschool/simplebank](https://github.com/techschool/simplebank) | PostgreSQL、事务、sqlc、Docker、CI、Kubernetes、Redis、gRPC、日志 | 作为第一个 Go 后端主项目，按需求拆分实验 |
+| [bregman-arie/devops-exercises](https://github.com/bregman-arie/devops-exercises) | Linux、数据库、CI/CD、Kubernetes、可观测性和 SRE | 用作章节后的自测题库，不要求一次做完 |
+| [grafana/docker-otel-lgtm](https://github.com/grafana/docker-otel-lgtm) | Loki、Prometheus、Tempo、Pyroscope 和 OpenTelemetry | 本地快速搭建完整可观测性环境 |
+| [sqlc-dev/sqlc](https://github.com/sqlc-dev/sqlc) | 从 SQL 生成类型安全 Go 代码 | 和 PostgreSQL、Migration 一起练习 |
+| [golang-migrate/migrate](https://github.com/golang-migrate/migrate) | 数据库 Schema 版本管理 | 演练向前迁移、兼容发布和回滚 |
+| [google/pprof](https://github.com/google/pprof) | CPU、内存和阻塞分析 | 在压测后验证性能假设 |
+| [go-delve/delve](https://github.com/go-delve/delve) | Go 运行时调试 | 用于本地和受控环境，不替代生产观测 |
 
 ## 只作为查证和外链
 

@@ -7,13 +7,18 @@ prerequisites:
   - 能独立完成一个前端需求
   - 理解 HTTP 请求的基本过程
 related:
+  - 一次需求的全链路
   - 前端到 Go 原理映射
-  - GitHub 资源库
+  - 官方资料索引
 sourceRefs:
   - title: roadmap.sh Backend Roadmap
     url: https://roadmap.sh/backend
+    kind: practice
+    publisher: roadmap.sh
   - title: Learn Go with Tests
     url: https://github.com/quii/learn-go-with-tests
+    kind: practice
+    license: MIT
 ---
 
 ## 不从“学完一门语言”开始
@@ -29,6 +34,10 @@ sourceRefs:
     E --> F[监控和生产排查]
     F --> G[系统设计]`}
 />
+
+## 第零阶段：先看完整链路
+
+先阅读[一次需求的全链路](/docs/fullstack-lifecycle)，建立请求、数据、发布和生产证据之间的关系。此时不要求掌握每个工具，只需要知道每个阶段解决什么问题，以及如何判断它已经完成。
 
 ## 第一阶段：能够修改接口
 
@@ -61,6 +70,12 @@ sourceRefs:
 - 理解环境变量、密钥和配置差异。
 - 设置健康检查、日志、指标与告警。
 - 准备发布、回滚和生产排查方案。
+
+这一阶段可以分别进入：
+
+- [从代码到生产：构建、发布与回滚](/docs/fullstack-lifecycle/delivery-and-deployment)
+- [日志、指标与链路追踪](/docs/fullstack-lifecycle/observability)
+- [生产排障：从现象到根因](/docs/fullstack-lifecycle/production-debugging)
 
 ## 第五阶段：逐步进入系统设计
 

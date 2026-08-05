@@ -1,0 +1,90 @@
+---
+title: 官方文档索引
+description: 按全栈交付链路整理 Go、数据库、部署、可观测性、可靠性和安全领域的一手资料。
+type: resource
+summary: 不需要线性读完全部文档；遇到具体问题时回到对应官方章节查证定义、边界和当前行为。
+firstPrinciple: 官方文档负责回答“产品或标准实际承诺什么”，实践代码负责验证“在当前版本和环境中如何表现”。
+frontendAnalogy: MDN 是前端查证浏览器 API 的事实锚点，下面这些资料承担服务端各领域的同类角色。
+related:
+  - 一次需求的全链路
+  - GitHub 资源库
+sourceRefs:
+  - title: Go Documentation
+    url: https://go.dev/doc/
+    kind: official
+    publisher: Go Team
+  - title: PostgreSQL Documentation
+    url: https://www.postgresql.org/docs/current/
+    kind: official
+    publisher: PostgreSQL Global Development Group
+  - title: Kubernetes Documentation
+    url: https://kubernetes.io/docs/
+    kind: official
+    publisher: CNCF
+  - title: OpenTelemetry Documentation
+    url: https://opentelemetry.io/docs/
+    kind: official
+    publisher: CNCF
+---
+
+## 请求、HTTP 与 Go 服务
+
+| 资料 | 重点内容 |
+| --- | --- |
+| [MDN HTTP](https://developer.mozilla.org/en-US/docs/Web/HTTP) | HTTP 方法、状态码、Header、缓存与安全 |
+| [OpenAPI Specification](https://spec.openapis.org/oas/latest.html) | API 契约和机器可读描述 |
+| [Go Documentation](https://go.dev/doc/) | Go 官方教程与语言资料 |
+| [Go net/http](https://pkg.go.dev/net/http) | HTTP Client、Server、Handler 和 Transport |
+| [Go Context](https://pkg.go.dev/context) | 截止时间、取消和请求范围信息传播 |
+
+## 数据库、缓存与消息
+
+| 资料 | 重点内容 |
+| --- | --- |
+| [Go Database Guide](https://go.dev/doc/database/) | `database/sql`、连接、查询和事务 |
+| [PostgreSQL Documentation](https://www.postgresql.org/docs/current/) | SQL、索引、事务、锁、执行计划和运维 |
+| [MySQL Documentation](https://dev.mysql.com/doc/) | MySQL 数据库行为和管理 |
+| [Redis Documentation](https://redis.io/docs/latest/) | 数据结构、过期、持久化、集群和客户端 |
+| [Apache Kafka Documentation](https://kafka.apache.org/documentation/) | Topic、Partition、Producer 和 Consumer |
+| [RabbitMQ Tutorials](https://www.rabbitmq.com/tutorials) | 队列、发布订阅、路由和可靠性入门 |
+
+## 构建、发布与基础设施
+
+| 资料 | 重点内容 |
+| --- | --- |
+| [Jenkins Documentation](https://www.jenkins.io/doc/) | Pipeline、Agent、Credential 和流水线实践 |
+| [GitHub Actions](https://docs.github.com/en/actions) | 公开仓库 CI、Workflow 和制品 |
+| [Docker Documentation](https://docs.docker.com/) | 镜像、容器、网络、Volume 和 Compose |
+| [Kubernetes Documentation](https://kubernetes.io/docs/) | Pod、Deployment、Service、配置和排障 |
+| [Helm Documentation](https://helm.sh/docs/) | Chart、Values、Release 和升级回滚 |
+| [Argo CD Documentation](https://argo-cd.readthedocs.io/en/stable/) | GitOps 和声明式持续部署 |
+
+## 日志、指标、Trace 与性能
+
+| 资料 | 重点内容 |
+| --- | --- |
+| [Grafana Loki](https://grafana.com/docs/loki/latest/) | 日志采集、标签、LogQL 和告警 |
+| [Prometheus](https://prometheus.io/docs/introduction/overview/) | 指标模型、PromQL 和告警规则 |
+| [OpenTelemetry](https://opentelemetry.io/docs/) | Logs、Metrics、Traces 的统一标准 |
+| [Grafana Tempo](https://grafana.com/docs/tempo/latest/) | 分布式链路存储与查询 |
+| [Go Diagnostics](https://go.dev/doc/diagnostics) | Profiling、Tracing、Debugging 和 Race Detector |
+
+## 可靠性、安全与架构
+
+| 资料 | 重点内容 |
+| --- | --- |
+| [Google SRE Books](https://sre.google/books/) | SLI/SLO、告警、发布、容量和事故处理 |
+| [AWS Builders' Library](https://aws.amazon.com/builders-library/) | 超时、重试、负载、部署和分布式系统经验 |
+| [OWASP Cheat Sheet Series](https://owasp.org/www-project-cheat-sheets/) | 鉴权、Session、输入校验、Secret 和日志安全 |
+| [OWASP API Security](https://owasp.org/www-project-api-security/) | API 常见安全风险 |
+| [The Twelve-Factor App](https://12factor.net/) | 配置、依赖、进程、日志和环境原则 |
+
+## 阅读方式
+
+不要把官方文档当成需要从第一页背到最后一页的教材。更有效的循环是：
+
+1. 从当前需求提出具体问题。
+2. 在官方文档中确认定义和边界。
+3. 编写最小实验或测试。
+4. 回到真实项目验证版本、配置和运行差异。
+5. 把结论写成自己的类比、检查表和完成标准。

@@ -1,0 +1,94 @@
+---
+title: 日志、指标与链路追踪
+description: 从 console、Network 和 Performance 面板，理解 Loki、Prometheus、Grafana 与 OpenTelemetry。
+type: conceptual
+summary: 日志解释具体事件，指标描述整体趋势，Trace 还原一次请求跨服务的路径，三者需要通过统一上下文关联。
+firstPrinciple: 当无法直接查看系统内部状态时，只能通过系统主动暴露的证据推断行为。
+frontendAnalogy: console 查看事件，Network 查看单次请求，Performance 查看时间分布，错误平台聚合异常。
+prerequisites:
+  - HTTP 请求链路
+  - Docker 和服务部署
+related:
+  - 生产排障
+  - console.log 与结构化日志
+  - pprof
+sourceRefs:
+  - title: Grafana Loki Documentation
+    url: https://grafana.com/docs/loki/latest/
+    kind: official
+    publisher: Grafana Labs
+  - title: Prometheus Overview
+    url: https://prometheus.io/docs/introduction/overview/
+    kind: official
+    publisher: CNCF
+  - title: OpenTelemetry Documentation
+    url: https://opentelemetry.io/docs/
+    kind: official
+    publisher: CNCF
+  - title: Grafana docker-otel-lgtm
+    url: https://github.com/grafana/docker-otel-lgtm
+    kind: project
+    publisher: Grafana Labs
+    license: Apache-2.0
+---
+
+## 可观测性不等于查日志
+
+| 信号 | 回答的问题 | 常见工具 |
+| --- | --- | --- |
+| Logs | 某个时刻具体发生了什么？ | Loki、ELK |
+| Metrics | 整体是否异常，何时开始异常？ | Prometheus、Grafana |
+| Traces | 某个请求经过了哪些服务，慢在哪里？ | OpenTelemetry、Tempo、Jaeger |
+| Profiles | CPU 和内存花在了哪些代码上？ | pprof、Pyroscope |
+
+只查日志可能找不到“系统整体变慢”，只看指标又无法知道某个用户为什么失败。不同证据必须组合使用。
+
+## 从 console.log 到结构化日志
+
+```go
+logger.InfoContext(ctx, "order created",
+    "request_id", requestID,
+    "order_id", orderID,
+    "user_id", userID,
+    "duration_ms", duration.Milliseconds(),
+)
+```
+
+生产日志至少需要：
+
+- 时间、级别、服务、环境和版本。
+- Request ID、Trace ID 和关键业务 ID。
+- 稳定的事件名称和字段。
+- 错误分类与必要堆栈。
+- 密码、Token、手机号等敏感信息脱敏。
+
+Loki 负责存储并使用 LogQL 查询日志，Grafana 负责展示和关联。标签应该放服务、环境等低基数字段；用户 ID、订单 ID 等高基数字段通常保留在日志内容中搜索。
+
+## 指标先覆盖四类信号
+
+服务最基础的指标可以从四类开始：
+
+- **Latency**：请求耗时分布。
+- **Traffic**：QPS、任务数量、消息吞吐。
+- **Errors**：错误率和失败类型。
+- **Saturation**：CPU、内存、连接池、队列积压。
+
+告警应尽量描述用户影响，而不是看到一次错误日志就立即通知所有人。
+
+## Trace 连接跨服务路径
+
+Trace ID 随请求经过网关、Go 服务、数据库和下游服务。Span 记录每一段操作的起止时间、状态和属性。
+
+OpenTelemetry 是生成和传递遥测数据的标准，不等于一个存储产品；Tempo 或 Jaeger 才负责保存和查询 Trace。
+
+## 本地实践组合
+
+`grafana/docker-otel-lgtm` 可以在一个本地容器中提供 Loki、Prometheus、Tempo、Pyroscope、OpenTelemetry Collector 和 Grafana，适合作为第一个完整实验环境。
+
+## 完成标准
+
+- 一次请求拥有 Request ID 和 Trace ID。
+- Loki 能根据服务、时间和关键字段定位日志。
+- Grafana 能观察错误率、延迟和资源变化。
+- Trace 能指出请求慢在网关、服务、数据库还是下游。
+- 日志中不存在明文凭证和不受控的大对象。

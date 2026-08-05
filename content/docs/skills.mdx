@@ -1,0 +1,70 @@
+---
+title: Skills 与真实提示词
+description: 筛选官方产品 Skills、高质量工程方法和可以直接进入真实工作的提示词。
+type: resource
+summary: Skill 的价值不是让提示词更长，而是把官方知识、操作步骤、工具和验证标准封装成可重复执行的工作流。
+firstPrinciple: Star 只能表示关注度；真正决定 Skill 是否可用的是来源、任务匹配度、权限范围、可验证输出和维护状态。
+frontendAnalogy: 像选择 npm 包：先看维护者、版本、依赖和边界，再决定是否安装，而不是只按下载量复制示例。
+related:
+  - 全栈任务配方
+  - 官方资料索引
+  - 前端 → Go 原理映射
+sourceRefs:
+  - title: Agent Skills Open Standard
+    url: https://agentskills.io/
+    kind: specification
+    publisher: Agent Skills
+  - title: Google Skills
+    url: https://github.com/google/skills
+    kind: project
+    publisher: Google
+    license: Apache-2.0
+  - title: Firebase Agent Skills
+    url: https://github.com/firebase/agent-skills
+    kind: project
+    publisher: Firebase
+    license: Apache-2.0
+  - title: Vercel Agent Skills
+    url: https://github.com/vercel-labs/agent-skills
+    kind: project
+    publisher: Vercel
+---
+
+## 先区分 Skill 和提示词
+
+| 形式 | 适合解决什么 | 局限 |
+| --- | --- | --- |
+| 一次性提示词 | 当前任务的目标、证据、限制和输出格式 | 不会自动携带产品资料、脚本和长期规则 |
+| Agent Skill | 可重复任务的完整工作流，包含触发条件、步骤、参考资料和脚本 | 可能读写文件、执行命令或访问外部服务，安装前必须审查 |
+| 官方文档 | 定义产品行为、版本和边界 | 不会自动结合你的仓库与运行证据 |
+
+最有效的组合不是“找一句万能 Prompt”，而是：**官方 Skill 提供产品知识，真实提示词提供当前任务上下文，工程师负责权限与最终判断。**
+
+## Firestore Skill 为什么值得参考
+
+Firebase 官方的 `firebase-firestore` 不会直接从“建一个 users 集合”开始。它先要求确认数据库实例与版本，再根据 Standard 或 Enterprise 选择对应的数据模型、Security Rules、索引和 SDK 参考资料。
+
+这体现了一个很重要的 Skill 设计原则：
+
+1. 先识别环境和版本；
+2. 再选择对应的知识分支；
+3. 明确自己不负责 Auth、Hosting 等相邻产品；
+4. 最后才进入数据结构、规则、索引和代码；
+5. 所有结论通过 CLI、Emulator、测试或运行结果验证。
+
+## 精选来源与可复制提示词
+
+下面的 Star 是在 **2026-08-05** 核验的静态快照，目的是帮助判断社区关注度。官方来源即使 Star 较低，也可能比热门社区仓库更适合产品实现。
+
+<SkillCatalog />
+
+## 安装前的最低检查
+
+1. 固定仓库与 Commit，不要把未经审查的 `main` 当成稳定依赖。
+2. 完整阅读 `SKILL.md`，确认触发条件和“不适用范围”。
+3. 检查 `scripts/`、依赖安装、网络请求、浏览器操作和凭据读取。
+4. 优先安装单个 Skill，而不是把整个仓库全部装入全局目录。
+5. 在临时目录或非生产项目试运行，观察它实际读取和修改了什么。
+6. 团队使用时记录来源、版本、负责人和更新方式。
+
+完整的接项目、接口、数据库、发布和排障模板仍放在[全栈任务配方](/docs/playbooks)。这里的提示词重点展示：**安装 Skill 后，怎样把它正确带进真实任务。**

@@ -1,0 +1,105 @@
+---
+title: 生产排障：从现象到根因
+description: 建立基于请求、版本、日志、指标、Trace 和数据证据的生产问题定位流程。
+type: guide
+summary: 生产排障不是猜测最可能的代码，而是不断缩小故障边界并保留可复核证据。
+firstPrinciple: 故障结论的可信度取决于证据能否把现象、时间、版本和系统状态连接成同一条因果链。
+frontendAnalogy: 先固定复现步骤和 Network 请求，再比较成功与失败响应，最后借助 Source Map 定位源码。
+prerequisites:
+  - 日志、指标与 Trace
+  - 数据库基础
+  - Kubernetes 基础
+related:
+  - Go Diagnostics
+  - Loki LogQL
+  - SQL EXPLAIN
+sourceRefs:
+  - title: Go Diagnostics
+    url: https://go.dev/doc/diagnostics
+    kind: official
+    publisher: Go Team
+  - title: Debugging Applications in Kubernetes
+    url: https://kubernetes.io/docs/tasks/debug/debug-application/
+    kind: official
+    publisher: CNCF
+  - title: Google pprof
+    url: https://github.com/google/pprof
+    kind: project
+    publisher: Google
+    license: Apache-2.0
+  - title: Delve
+    url: https://github.com/go-delve/delve
+    kind: project
+    publisher: Delve Contributors
+    license: MIT
+---
+
+## 第一步不是看代码
+
+先固定问题的最小事实：
+
+- 谁受影响，是单个用户还是全部用户？
+- 什么请求失败，完整方法、路径和状态码是什么？
+- 何时开始，持续多久？
+- 哪个环境、区域、服务和版本？
+- 是否能够稳定复现？
+- 最近发生了哪些发布、配置和数据变化？
+
+没有这些边界，日志查询会快速扩大成无目标搜索。
+
+## 一条通用证据链
+
+<Mermaid
+  chart={`flowchart LR
+    A[用户现象] --> B[请求与 Request ID]
+    B --> C[网关日志]
+    C --> D[服务日志与 Trace]
+    D --> E[数据库 / 缓存 / 队列]
+    E --> F[部署版本与配置]
+    F --> G[根因假设]
+    G --> H[最小验证]
+    H --> I[修复与回归]
+    I --> J[告警 / 测试 / 工具沉淀]`}
+/>
+
+## 按边界逐层排除
+
+| 边界 | 关键问题 | 常用证据 |
+| --- | --- | --- |
+| 客户端 | 请求是否真的发出，参数是否正确？ | DevTools、curl |
+| DNS / 网关 | 域名解析、TLS、路由和状态码是否正常？ | dig、curl、Nginx 日志 |
+| 服务 | 请求是否到达，失败在哪个阶段？ | Loki、Trace、错误堆栈 |
+| 数据 | SQL 是否慢，事务是否锁住，连接是否耗尽？ | EXPLAIN、数据库指标、锁视图 |
+| 缓存 / 队列 | Key 是否过期，消息是否积压或重复？ | Redis、队列指标、消费日志 |
+| 容器 / 集群 | Pod 是否重启，配置和镜像是否正确？ | kubectl get/describe/logs/events |
+| 资源 / 代码 | CPU、内存、Goroutine 和锁是否异常？ | pprof、trace、Race Detector |
+
+## Loki 查询要从低风险范围开始
+
+先固定环境、服务和时间范围，再增加 Request ID、错误码或业务 ID。避免一开始编写过度复杂的正则，也不要把“代码推断”写成“日志已经证明”。
+
+一个结论应明确区分：
+
+- 日志直接证据。
+- 指标或 Trace 证据。
+- 数据库状态。
+- 代码路径推断。
+- 尚未验证的假设。
+
+## 修复完成的标准
+
+修复代码并不等于问题关闭。还需要：
+
+1. 原始请求或等价用例恢复成功。
+2. 新版本已经实际运行在目标环境。
+3. 错误日志停止，指标恢复到合理范围。
+4. 数据损坏或积压已经修复。
+5. 增加自动测试、告警、校验脚本或发布保护。
+
+## 完成标准
+
+- 排障记录包含时间、环境、版本、请求和证据链接。
+- 根因与症状分开描述。
+- 修复前后使用同一组检查验证。
+- 能指出哪些结论是直接证据，哪些仍是推断。
+- 重复性检查已经转化为脚本、测试、告警或运行手册。

@@ -1,0 +1,85 @@
+---
+title: 一次需求的全链路
+description: 从用户点击开始，沿请求、服务、数据、发布、观测和生产排障建立完整的全栈认知。
+type: overview
+summary: 全栈能力不是会多少工具，而是能够对一个需求从输入到生产结果承担端到端责任。
+firstPrinciple: 软件系统把用户意图转换为可验证、可持久化、可运行和可观察的结果。
+frontendAnalogy: 像在 DevTools 中从一次点击追踪到 Network、状态变化和页面结果，只是链路继续延伸到了服务端和生产环境。
+related:
+  - 全栈学习路线
+  - 前端到 Go 原理映射
+  - 官方资料索引
+sourceRefs:
+  - title: MDN - HTTP Overview
+    url: https://developer.mozilla.org/en-US/docs/Web/HTTP/Overview
+    kind: official
+    publisher: MDN
+  - title: The Twelve-Factor App
+    url: https://12factor.net/
+    kind: specification
+    publisher: Heroku
+  - title: Google Site Reliability Engineering
+    url: https://sre.google/books/
+    kind: official
+    publisher: Google
+---
+
+## 先问系统必须完成什么
+
+从第一性原理看，一个可交付的软件功能至少要回答七个问题：
+
+1. 用户的意图如何被表达和验证？
+2. 业务规则应该放在哪里？
+3. 哪些数据是系统事实，如何保证不会写错？
+4. 哪些工作同步完成，哪些可以缓存或异步执行？
+5. 本地代码如何成为可追踪、可回滚的生产版本？
+6. 系统内部发生了什么，外部如何获得证据？
+7. 故障发生后，如何定位根因并防止再次出现？
+
+工具只是这些问题的具体实现。Jenkins 解决自动化流水线，Docker 解决运行环境封装，Kubernetes 解决期望状态和实例编排，Loki 解决日志存储与检索。先理解问题，再选择工具，知识才不会随着技术栈变化而失效。
+
+## 从前端认知出发走完整条链路
+
+点击下面七个阶段，可以查看前端已有认知、对应的第一性原理、工程责任和完成证据。
+
+<LifecycleExplorer />
+
+## 一次请求的实际路径
+
+<Mermaid
+  chart={`flowchart TB
+    subgraph R[运行时数据流]
+      direction LR
+      A[用户操作] --> B[HTTP 请求契约]
+      B --> C[网关与服务边界]
+      C --> D[业务规则]
+      D --> E[数据库 / 缓存 / 消息]
+      E --> F[响应或异步结果]
+      F --> G[日志 / 指标 / Trace]
+    end
+    subgraph P[交付控制流]
+      direction LR
+      H[Git 提交] --> I[CI 测试与构建]
+      I --> J[Docker 镜像]
+      J --> K[Kubernetes 发布]
+    end
+    K --> C
+    G --> L[生产排障与改进]`}
+/>
+
+这条链路同时包含两条流：
+
+- **运行时数据流**：用户请求如何经过服务、数据和依赖得到结果。
+- **交付控制流**：代码如何经过测试、构建、发布和回滚进入生产。
+
+真正的全栈工程师需要把两条流连接起来：线上某个请求使用的是哪个版本，这个版本由哪次流水线产生，数据写到了哪里，失败证据又在哪里。
+
+## 三个贯穿约束
+
+安全、可靠性和测试不是最后补上的三个章节，而是贯穿全部阶段：
+
+- 每个边界都要验证身份和输入。
+- 每次外部调用都要考虑超时、取消、重试和幂等。
+- 每项关键规则都要有自动化验证。
+- 每次发布都要能观察、停止和回滚。
+- 每次故障都要沉淀为测试、告警、工具或流程。

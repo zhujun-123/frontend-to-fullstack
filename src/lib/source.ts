@@ -7,9 +7,11 @@ import { z } from 'zod';
 
 const knowledgePageSchema = pageSchema.extend({
   type: z
-    .enum(['overview', 'roadmap', 'conceptual', 'mapping', 'guide', 'practice', 'resource'])
+    .enum(['overview', 'roadmap', 'conceptual', 'mapping', 'guide', 'practice', 'playbook', 'resource'])
     .default('conceptual'),
   summary: z.string().optional(),
+  firstPrinciple: z.string().optional(),
+  frontendAnalogy: z.string().optional(),
   prerequisites: z.array(z.string()).default([]),
   related: z.array(z.string()).default([]),
   sourceRefs: z
@@ -17,6 +19,9 @@ const knowledgePageSchema = pageSchema.extend({
       z.object({
         title: z.string(),
         url: z.url(),
+        kind: z.enum(['official', 'specification', 'project', 'practice']).optional(),
+        publisher: z.string().optional(),
+        license: z.string().optional(),
       }),
     )
     .default([]),

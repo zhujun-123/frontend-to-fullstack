@@ -1,0 +1,88 @@
+---
+title: 贯穿全链路的可靠性与安全
+description: 把超时、重试、幂等、权限、Secret 和测试作为每个阶段的设计约束。
+type: conceptual
+summary: 可靠性和安全不是上线前检查项，而是请求、数据、依赖、发布与观测中的共同约束。
+firstPrinciple: 系统必须假设输入不可信、依赖会失败、请求会重复、实例会重启，同时把失败限制在可恢复范围内。
+frontendAnalogy: Error Boundary、AbortController、请求重试、权限路由和环境变量都是局部体现，但服务端需要处理多用户、多实例和真实并发。
+prerequisites:
+  - 请求契约
+  - 数据库事务
+  - 发布与可观测性
+related:
+  - Context
+  - 生产排障
+  - OWASP API Security
+sourceRefs:
+  - title: OWASP Cheat Sheet Series
+    url: https://owasp.org/www-project-cheat-sheets/
+    kind: official
+    publisher: OWASP
+  - title: OWASP API Security Project
+    url: https://owasp.org/www-project-api-security/
+    kind: official
+    publisher: OWASP
+  - title: Google SRE Books
+    url: https://sre.google/books/
+    kind: official
+    publisher: Google
+  - title: AWS Builders' Library
+    url: https://aws.amazon.com/builders-library/
+    kind: official
+    publisher: AWS
+---
+
+## 四个默认假设
+
+设计服务端功能时，默认接受以下事实：
+
+1. 调用者可能绕过前端并伪造请求。
+2. 网络和依赖迟早会超时或失败。
+3. 客户端、网关或消费者可能重复执行同一操作。
+4. 服务实例、容器和节点随时可能重启。
+
+系统设计的任务不是消灭所有失败，而是让失败可被限制、观察、恢复和验证。
+
+## 超时、重试和幂等必须一起设计
+
+- 没有超时，请求可能永久占用连接和 Goroutine。
+- 没有预算的重试，会放大下游故障。
+- 写操作没有幂等，重试可能重复扣费或创建资源。
+- 上游超时并不代表下游一定没有成功执行。
+
+因此需要统一考虑 Context 截止时间、重试次数、退避策略、幂等键和最终状态查询。
+
+## 权限不是前端菜单控制
+
+隐藏按钮只能改善体验，不能建立安全边界。服务端必须验证：
+
+- 调用者是谁。
+- 是否有权访问这个资源。
+- 是否只能访问属于自己的数据。
+- 管理权限是否遵循最小权限原则。
+- Token 和 Session 是否可撤销、过期和轮换。
+
+## Secret 不是普通配置
+
+数据库密码、API Key 和签名密钥不能写入代码、镜像、日志或公开仓库。生产环境应通过 Secret 管理能力注入，并具备轮换和访问审计。
+
+## 可靠性检查表
+
+| 阶段 | 最小检查 |
+| --- | --- |
+| 请求 | 输入校验、身份、权限、限流、幂等 |
+| 服务 | 超时、取消、错误分类、并发安全 |
+| 数据 | 约束、事务、备份、迁移兼容 |
+| 依赖 | 超时、有限重试、熔断、降级 |
+| 发布 | 健康检查、灰度、停止条件、回滚 |
+| 观测 | 日志脱敏、指标、Trace、告警 |
+| 故障 | 证据、恢复、复盘、防复发机制 |
+
+## 完成标准
+
+- 每个外部调用都有超时和取消传播。
+- 重试策略明确限制次数、条件和副作用。
+- 写操作能够处理重复请求。
+- 权限校验发生在服务端资源边界。
+- Secret 不进入源码、镜像和日志。
+- 关键故障拥有降级、回滚和恢复路径。

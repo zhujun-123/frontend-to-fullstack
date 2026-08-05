@@ -11,7 +11,6 @@ import { notFound } from 'next/navigation';
 import { getMDXComponents } from '@/components/mdx';
 import type { Metadata } from 'next';
 import { createRelativeLink } from 'fumadocs-ui/mdx';
-import { gitConfig } from '@/lib/shared';
 
 const typeLabels = {
   overview: '专题概览',
@@ -20,7 +19,15 @@ const typeLabels = {
   mapping: '原理映射',
   guide: '实践指南',
   practice: '动手练习',
+  playbook: '任务配方',
   resource: '资源整理',
+} as const;
+
+const sourceKindLabels = {
+  official: '官方文档',
+  specification: '标准 / 规范',
+  project: '官方项目',
+  practice: '实践资料',
 } as const;
 
 export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
@@ -37,12 +44,13 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
       <DocsDescription className="mb-0">{page.data.description}</DocsDescription>
       <div className="flex flex-row gap-2 items-center border-b pb-6">
         <MarkdownCopyButton markdownUrl={markdownUrl} />
-        <ViewOptionsPopover
-          markdownUrl={markdownUrl}
-          githubUrl={`https://github.com/${gitConfig.user}/${gitConfig.repo}/blob/${gitConfig.branch}/content/docs/${page.path}`}
-        />
+        <ViewOptionsPopover markdownUrl={markdownUrl} />
       </div>
-      {(page.data.summary || page.data.prerequisites.length > 0 || page.data.related.length > 0) && (
+      {(page.data.summary ||
+        page.data.firstPrinciple ||
+        page.data.frontendAnalogy ||
+        page.data.prerequisites.length > 0 ||
+        page.data.related.length > 0) && (
         <div className="knowledge-meta">
           <div className="knowledge-meta-row">
             <span className="knowledge-meta-label">内容类型</span>
@@ -54,24 +62,40 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
               <span>{page.data.summary}</span>
             </div>
           ) : null}
+          {page.data.firstPrinciple ? (
+            <div className="knowledge-meta-row">
+              <span className="knowledge-meta-label">第一性原理</span>
+              <span>{page.data.firstPrinciple}</span>
+            </div>
+          ) : null}
+          {page.data.frontendAnalogy ? (
+            <div className="knowledge-meta-row">
+              <span className="knowledge-meta-label">前端认知起点</span>
+              <span>{page.data.frontendAnalogy}</span>
+            </div>
+          ) : null}
           {page.data.prerequisites.length > 0 ? (
             <div className="knowledge-meta-row">
               <span className="knowledge-meta-label">前置知识</span>
-              {page.data.prerequisites.map((item) => (
-                <span className="knowledge-meta-chip" key={item}>
-                  {item}
-                </span>
-              ))}
+              <span className="knowledge-meta-values">
+                {page.data.prerequisites.map((item) => (
+                  <span className="knowledge-meta-chip" key={item}>
+                    {item}
+                  </span>
+                ))}
+              </span>
             </div>
           ) : null}
           {page.data.related.length > 0 ? (
             <div className="knowledge-meta-row">
               <span className="knowledge-meta-label">关联知识</span>
-              {page.data.related.map((item) => (
-                <span className="knowledge-meta-chip" key={item}>
-                  {item}
-                </span>
-              ))}
+              <span className="knowledge-meta-values">
+                {page.data.related.map((item) => (
+                  <span className="knowledge-meta-chip" key={item}>
+                    {item}
+                  </span>
+                ))}
+              </span>
             </div>
           ) : null}
         </div>
@@ -89,9 +113,16 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
             <ul>
               {page.data.sourceRefs.map((sourceRef) => (
                 <li key={sourceRef.url}>
-                  <a href={sourceRef.url} rel="noreferrer" target="_blank">
-                    {sourceRef.title}
-                  </a>
+                  <div className="source-ref-row">
+                    <a href={sourceRef.url} rel="noreferrer" target="_blank">
+                      {sourceRef.title}
+                    </a>
+                    <span className="source-ref-meta">
+                      {sourceRef.kind ? sourceKindLabels[sourceRef.kind] : null}
+                      {sourceRef.publisher ? ` · ${sourceRef.publisher}` : null}
+                      {sourceRef.license ? ` · ${sourceRef.license}` : null}
+                    </span>
+                  </div>
                 </li>
               ))}
             </ul>

@@ -5,6 +5,10 @@
 ## 当前内容
 
 - 从真实接口修改开始的全栈学习路线
+- 从用户请求到生产排障的 7 阶段全链路
+- 请求契约、服务边界、数据库、缓存与异步基础
+- Jenkins、Docker、Kubernetes 与 Helm 的职责拆分
+- Loki、Prometheus、OpenTelemetry 与生产排障方法
 - Event Loop → Go Scheduler
 - Promise → Goroutine / Channel / Context
 - JavaScript Array → Go Array / Slice
@@ -13,8 +17,10 @@
 - TypeScript Interface → Go Interface
 - try/catch → Go error
 - 30 条可搜索、可筛选的结构化映射
+- 12 条覆盖接手、开发、数据、发布和生产排障的任务配方
+- 任务配方支持按阶段、输入材料筛选和一键复制
 - 基于 localStorage 的学习进度
-- 经过许可证筛选的 GitHub 学习资源
+- 分类整理的官方文档和经过许可证筛选的 GitHub 学习资源
 
 ## 技术栈
 
@@ -50,9 +56,11 @@ pnpm build
 
 - `type`：内容类型
 - `summary`：核心结论
+- `firstPrinciple`：该主题不依赖具体工具的底层问题
+- `frontendAnalogy`：前端开发者已有的认知起点
 - `prerequisites`：前置知识
 - `related`：关联知识
-- `sourceRefs`：参考来源
+- `sourceRefs`：参考来源，可附来源类型、发布方和许可证
 
 第三方资料只作为事实来源和学习索引，正文需要独立编写，并遵守对应许可证。
 

@@ -1,0 +1,95 @@
+---
+title: 请求契约与服务边界
+description: 从表单、Fetch 和前端 Service 层，迁移到 API 契约、Handler、Service 与 Repository。
+type: conceptual
+summary: HTTP 只是输入输出协议，业务规则需要独立于页面、框架和数据库存在。
+firstPrinciple: 穿越系统边界的数据不可信，核心业务规则必须在服务端被验证并保持单一来源。
+frontendAnalogy: 表单校验、TypeScript 类型、Axios 拦截器、Next.js Middleware 和前端 Service 层。
+prerequisites:
+  - HTTP 方法与状态码
+  - Fetch API
+related:
+  - Fetch 与 http.Client
+  - 数据库与系统状态
+  - 超时、重试与幂等
+sourceRefs:
+  - title: MDN - HTTP Overview
+    url: https://developer.mozilla.org/en-US/docs/Web/HTTP/Overview
+    kind: official
+    publisher: MDN
+  - title: Go Package net/http
+    url: https://pkg.go.dev/net/http
+    kind: official
+    publisher: Go Team
+  - title: OpenAPI Specification
+    url: https://spec.openapis.org/oas/latest.html
+    kind: specification
+    publisher: OpenAPI Initiative
+---
+
+## 从前端的一次点击开始
+
+前端通常负责把用户输入转换为 HTTP 请求：
+
+```ts
+await fetch('/api/orders', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ productId, quantity }),
+});
+```
+
+这段代码只表达了“客户端希望创建订单”。服务端不能相信页面已经校验过数量、价格和权限，因为调用者可能绕过页面直接发送请求。
+
+因此，一个稳定的请求契约至少包含：
+
+- 方法、路径、Header 和 Body。
+- 字段类型、必填项和取值范围。
+- 身份与权限。
+- 成功响应和错误响应。
+- 重试是否安全，是否需要幂等键。
+- 版本兼容和字段演进方式。
+
+## Handler、Service、Repository 分别解决什么
+
+<Mermaid
+  chart={`flowchart LR
+    A[HTTP Request] --> B[Handler: 协议转换]
+    B --> C[Service: 业务规则]
+    C --> D[Repository: 数据访问]
+    D --> E[(Database)]
+    C --> F[Domain Result]
+    F --> B
+    B --> G[HTTP Response]`}
+/>
+
+| 层次 | 核心责任 | 前端类比 |
+| --- | --- | --- |
+| Handler | 解析请求、调用服务、转换响应 | Router Loader、API Route |
+| Service | 执行业务规则和事务用例 | 独立 Service、复杂 Hook、状态机 |
+| Repository | 隔离 SQL 和存储实现 | API Client、数据访问适配器 |
+| Middleware | 鉴权、日志、恢复、限流 | Next Middleware、Axios Interceptor |
+
+分层不是为了增加文件数量，而是让业务规则可以脱离 HTTP 和数据库单独测试。一个“扣减库存”的规则，既可能由 HTTP 请求触发，也可能由消息消费者或后台任务触发。
+
+## 错误也是契约的一部分
+
+前端需要区分输入错误、未登录、无权限、资源不存在、冲突和服务异常。服务端内部错误可以很具体，但对外响应需要稳定且避免泄露敏感实现。
+
+```json
+{
+  "code": "ORDER_STOCK_NOT_ENOUGH",
+  "message": "库存不足",
+  "requestId": "req_01..."
+}
+```
+
+`requestId` 同时是用户反馈和生产日志之间的连接点。
+
+## 完成标准
+
+- 使用 curl 可以独立复现请求。
+- 前端校验被绕过时，服务端仍然拒绝非法输入。
+- Handler 中没有堆积数据库和业务细节。
+- 错误响应具有稳定的 code、状态码和 Request ID。
+- 写操作明确说明能否重试以及如何保证幂等。

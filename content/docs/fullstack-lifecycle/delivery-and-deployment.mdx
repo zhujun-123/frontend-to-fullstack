@@ -1,0 +1,100 @@
+---
+title: 从代码到生产：构建、发布与回滚
+description: 对照 Vite 和 Vercel 的前端交付体验，理解 Jenkins、Docker、Kubernetes 与 Helm 的职责边界。
+type: conceptual
+summary: Jenkins 编排交付步骤，Docker 生成不可变运行制品，Kubernetes 维持期望运行状态，Helm 管理部署配置。
+firstPrinciple: 生产运行的版本必须可重复生成、可唯一识别、可验证发布并可快速回退。
+frontendAnalogy: Vite Build 生成静态制品，Vercel Preview 关联提交，前端发布平台负责环境、版本和回滚。
+prerequisites:
+  - Git 基本工作流
+  - Linux 进程和端口
+related:
+  - 可观测性
+  - 生产排障
+  - The Twelve-Factor App
+sourceRefs:
+  - title: Jenkins User Documentation
+    url: https://www.jenkins.io/doc/
+    kind: official
+    publisher: Jenkins
+  - title: Docker Documentation
+    url: https://docs.docker.com/
+    kind: official
+    publisher: Docker
+  - title: Kubernetes Documentation
+    url: https://kubernetes.io/docs/
+    kind: official
+    publisher: CNCF
+  - title: Helm Documentation
+    url: https://helm.sh/docs/
+    kind: official
+    publisher: CNCF
+---
+
+## 工具不是同一层
+
+| 工具 | 解决的问题 | 不负责什么 |
+| --- | --- | --- |
+| Jenkins / GitHub Actions | 自动执行测试、构建和发布步骤 | 不直接定义应用如何运行 |
+| Docker | 封装程序和运行依赖，生成镜像 | 不负责多实例调度 |
+| 镜像仓库 | 保存带版本的镜像 | 不负责运行服务 |
+| Kubernetes | 维持实例数量、网络、健康和滚动更新 | 不负责生成源码制品 |
+| Helm | 参数化和版本化 Kubernetes 配置 | 不替代 Kubernetes |
+
+## 一条典型流水线
+
+<Mermaid
+  chart={`flowchart LR
+    A[Git Commit] --> B[Lint / Test]
+    B --> C[Build]
+    C --> D[Docker Image]
+    D --> E[Image Registry]
+    E --> F[Deploy]
+    F --> G[Health Check]
+    G --> H[Observe]
+    H -->|异常| I[Rollback]
+    H -->|正常| J[Complete]`}
+/>
+
+Jenkinsfile 的价值不只是“执行几个命令”，而是把交付过程写成可审查、可重复的代码。
+
+## Docker 的第一性原理
+
+“在我电脑上能运行”无法证明生产环境也能运行。Docker 镜像把二进制、依赖和启动方式封装为同一份不可变制品。
+
+镜像需要：
+
+- 使用明确版本的基础镜像。
+- 多阶段构建，减少运行镜像体积。
+- 不把密码和生产配置写入镜像。
+- 使用提交 SHA 或语义版本作为镜像标签。
+- 记录构建来源和依赖信息。
+
+## Kubernetes 维护期望状态
+
+你声明需要三个实例，Kubernetes 尝试让现实状态不断接近期望状态。它还需要知道：
+
+- 应用是否启动完成：Readiness Probe。
+- 应用是否仍然存活：Liveness Probe。
+- 使用哪个镜像和配置。
+- 如何暴露网络。
+- 如何滚动更新以及允许多少不可用实例。
+
+## 发布完成不等于流水线变绿
+
+真正的发布完成标准包括：
+
+- 新实例使用了预期镜像。
+- 健康检查通过。
+- 真实请求可以完成。
+- 错误率、延迟和资源指标没有异常。
+- 数据库迁移兼容新旧版本。
+- 回滚命令、目标版本和停止条件明确。
+
+## 完成标准
+
+- 能从生产实例追溯到镜像、流水线和 Git 提交。
+- 同一镜像可以在测试和生产环境运行，差异由配置注入。
+- 发布过程包含自动测试、健康验证和观察窗口。
+- 数据库迁移不会让旧版本立即失效。
+- 能在不重新构建代码的情况下回滚到上一个镜像。

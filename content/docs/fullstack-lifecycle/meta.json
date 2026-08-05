@@ -1,0 +1,13 @@
+{
+  "title": "一次需求的全链路",
+  "defaultOpen": true,
+  "pages": [
+    "index",
+    "request-and-service",
+    "database-and-state",
+    "delivery-and-deployment",
+    "observability",
+    "production-debugging",
+    "reliability-and-security"
+  ]
+}

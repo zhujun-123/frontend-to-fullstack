@@ -4,7 +4,7 @@
 
 ## 内容标准
 
-每个映射专题应当回答：
+每个映射或全链路专题应当回答：
 
 1. 前端开发者已经熟悉什么？
 2. 两边解决的共同问题是什么？
@@ -12,6 +12,8 @@
 4. 哪些地方不能照搬？
 5. 在真实项目中最容易出现什么问题？
 6. 读者可以完成什么练习来验证理解？
+7. 不依赖当前工具品牌的第一性原理是什么？
+8. 什么证据能够证明读者已经完成这一阶段？
 
 ## Frontmatter
 
@@ -21,6 +23,8 @@ title: Promise 与 Goroutine
 description: 区分异步任务、未来结果、并发通信和取消机制。
 type: mapping
 summary: 一句话核心结论。
+firstPrinciple: 不依赖具体框架和工具的底层问题。
+frontendAnalogy: 前端开发者已经掌握的认知起点。
 prerequisites:
   - Promise 与 async/await
 related:
@@ -28,6 +32,8 @@ related:
 sourceRefs:
   - title: Go 官方文档
     url: https://go.dev/
+    kind: official
+    publisher: Go Team
 ---
 ```
 

@@ -1,0 +1,98 @@
+---
+title: 数据库、缓存与系统状态
+description: 从 localStorage、共享 Store 和 React Query Cache，理解数据库事务、索引、Redis 与异步任务。
+type: conceptual
+summary: 数据库保存系统事实，缓存改善读取成本，消息队列解耦执行时间；三者不能互相替代。
+firstPrinciple: 状态设计的目标是在并发、失败和重启之后，仍然能够恢复出可信的业务事实。
+frontendAnalogy: localStorage 负责浏览器持久化，React Query 管理远端缓存，共享 Store 保存当前页面运行状态。
+prerequisites:
+  - 基本 SQL
+  - 请求契约与服务边界
+related:
+  - JavaScript Array 与 Go Slice
+  - 生产排障
+  - 超时、重试与幂等
+sourceRefs:
+  - title: Go - Accessing a relational database
+    url: https://go.dev/doc/database/
+    kind: official
+    publisher: Go Team
+  - title: PostgreSQL Documentation
+    url: https://www.postgresql.org/docs/current/
+    kind: official
+    publisher: PostgreSQL Global Development Group
+  - title: Redis Documentation
+    url: https://redis.io/docs/latest/
+    kind: official
+    publisher: Redis
+  - title: Simple Bank
+    url: https://github.com/techschool/simplebank
+    kind: practice
+    publisher: TECH SCHOOL
+    license: MIT
+---
+
+## 先区分三种状态
+
+| 状态 | 目标 | 前端类比 | 常见实现 |
+| --- | --- | --- | --- |
+| 进程状态 | 当前实例临时计算 | React 组件状态、Zustand | Go 变量、内存 Map |
+| 缓存 | 降低重复计算和读取成本 | React Query Cache | Redis、本地缓存 |
+| 系统事实 | 跨实例、重启和时间长期保存 | localStorage 的持久化意图，但要求更高 | PostgreSQL、MySQL、对象存储 |
+
+服务端通常有多个实例，而且随时可能重启。订单、余额、权限等关键事实不能只放在某个进程内存中。
+
+## 数据建模先从业务不变量开始
+
+不要先问“需要几张表”，先问哪些事实必须永远成立：
+
+- 用户名不能重复。
+- 余额不能小于零。
+- 同一个幂等键只能创建一次订单。
+- 订单明细必须属于一个存在的订单。
+
+这些不变量应尽量由数据库约束、事务和应用校验共同保护，而不是只依赖页面逻辑。
+
+## 索引本质上是空间换时间
+
+索引让数据库不必扫描全部记录，但会增加存储、写入和维护成本。学习索引至少要理解：
+
+- 查询条件和排序如何使用索引。
+- 联合索引中的字段顺序。
+- 为什么低选择性字段不一定适合单独建索引。
+- 如何使用 `EXPLAIN` 查看执行计划。
+- 索引是否真的改善了真实查询，而不是只看理论。
+
+## 事务保护一组不可拆分的事实
+
+转账不是“更新两行 SQL”这么简单，而是“扣款和入账必须同时成立”。事务需要考虑：
+
+- 原子性和回滚。
+- 隔离级别。
+- 并发更新和锁。
+- 死锁和重试。
+- 外部调用不能轻易和数据库事务混在一起。
+
+## 缓存不是第二数据库
+
+React Query 的缓存主要服务于当前客户端体验；Redis 可能被所有用户和服务实例共享。因此服务端缓存还需要处理：
+
+- Cache Aside 读取模式。
+- 过期时间和主动失效。
+- 缓存穿透、击穿和雪崩。
+- 数据库更新后缓存是否仍然正确。
+- 热 Key、容量和淘汰策略。
+
+## 消息队列改变完成时间
+
+发送邮件、生成报表和部分媒体处理不一定要阻塞 HTTP 响应。放入队列后，需要承认消息可能延迟、重复甚至长期失败。
+
+因此消费者必须设计：幂等、有限重试、退避、死信、积压告警和人工补偿。
+
+## 完成标准
+
+- 能画出一个需求涉及的表、约束和事务边界。
+- 能用 `EXPLAIN` 判断慢查询是否扫描过多数据。
+- 能说明数据应该放进程、缓存还是数据库，以及为什么。
+- 能说明重复请求和重复消息是否会产生副作用。
+- 数据库迁移具有向前兼容和回滚策略。
