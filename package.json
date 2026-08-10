@@ -7,6 +7,10 @@
     "build": "next build --webpack",
     "dev": "next dev --webpack",
     "start": "next start",
+    "content:check": "tsx scripts/check-content.ts",
+    "labs:vet": "cd examples/go-runtime && go vet ./...",
+    "labs:test": "cd examples/go-runtime && go test ./...",
+    "labs:race": "cd examples/go-runtime && go test -race ./...",
     "types:check": "next typegen && tsc --noEmit",
     "lint": "eslint"
   },
@@ -32,6 +36,8 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
     "eslint": "^9.39.4",
-    "eslint-config-next": "16.2.12"
+    "eslint-config-next": "16.2.12",
+    "gray-matter": "^4.0.3",
+    "tsx": "^4.20.6"
   }
 }

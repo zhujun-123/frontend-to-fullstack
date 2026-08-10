@@ -1,0 +1,162 @@
+---
+title: Go 内存分配
+description: 从 JavaScript Heap 和 DevTools 出发，理解逃逸分析、Goroutine 栈、Size Class、Span 与分配器层级。
+type: mapping
+maturity: verified
+summary: 值进入栈还是堆由编译器逃逸分析决定；堆上小对象通常先从 P 本地 mcache 的 Size Class Span 分配，再逐级向 mcentral 和 mheap 获取空间。
+firstPrinciple: 在保证对象生命周期正确的前提下，让高频小对象分配少竞争、可批量管理，并把碎片与 GC 扫描成本控制在预算内。
+frontendAnalogy: Heap Snapshot 能迁移对象持有关系和分配热点思维；Go 还需要在编译期理解逃逸，并区分 HeapAlloc、HeapInuse 与进程 RSS。
+lastVerified: '2026-08-10'
+testedWith:
+  - Go 1.26.5 darwin/arm64
+lab:
+  path: examples/go-runtime/labs/memory
+  commands:
+    - 'cd examples/go-runtime && go test ./labs/memory'
+    - 'cd examples/go-runtime && go test -bench=. -benchmem ./labs/memory'
+    - "cd examples/go-runtime && go test -gcflags='all=-m=2' ./labs/memory"
+prerequisites:
+  - JavaScript Heap Snapshot
+  - 指针与值
+  - Slice
+related:
+  - Go GC 原理
+  - GMP 调度模型
+  - pprof
+sourceRefs:
+  - title: Go Runtime Source - malloc.go
+    url: https://github.com/golang/go/blob/go1.26.5/src/runtime/malloc.go
+    kind: project
+    publisher: Go Team
+    version: go1.26.5
+    note: mcache、mcentral、mheap、Tiny 与大对象分配路径的固定版本源码。
+    verifiedAt: '2026-08-10'
+  - title: Go Runtime Source - msize.go
+    url: https://github.com/golang/go/blob/go1.26.5/src/runtime/msize.go
+    kind: project
+    publisher: Go Team
+    version: go1.26.5
+    note: 请求大小到 Size Class 的映射逻辑。
+    verifiedAt: '2026-08-10'
+  - title: Go FAQ - How do I know whether a variable is allocated on the heap or the stack?
+    url: https://go.dev/doc/faq#stack_or_heap
+    kind: official
+    publisher: Go Team
+    version: Go 1.26
+    note: 逃逸由编译器分析而不是由 new、指针语法直接决定。
+    verifiedAt: '2026-08-10'
+  - title: Profiling Go Programs
+    url: https://go.dev/blog/pprof
+    kind: official
+    publisher: Go Team
+    version: current
+    note: CPU 与 Heap Profile 的官方工作流。
+    verifiedAt: '2026-08-10'
+---
+
+## 先说人话
+
+<AnalogyStory
+  title="厨师手边的工作台与餐厅总仓库"
+  scene="切一颗葱没必要每次跑总仓库，厨师会把常用小料放在手边。只有需要长期保存、体积更大或者要跨多个环节使用的东西，才送进公共仓库统一管理。"
+  mapping="Goroutine Stack = 当前厨师的工作台；mcache = 工位旁的小料架；mcentral = 同规格物料区；mheap = 餐厅总仓库。"
+  takeaway="编译器先通过逃逸分析决定值能否留在栈上；堆上的常见小对象再从 P 本地 mcache 逐级向 mcentral、mheap 获取空间。"
+  boundary="写了指针不等于一定进仓库，使用 new 也不等于堆分配。最终位置由编译器证明出的生命周期决定。"
+/>
+
+## 问题与系统不变量
+
+对象必须至少活到最后一次使用，不能因为函数返回就丢失；高频分配又不能每次都争抢全局锁或直接向操作系统申请页面。分配器要同时保证生命周期正确、对齐正确、GC 可扫描，并把常见小对象路径做得足够便宜。
+
+## 前端认知起点
+
+前端已经会问“谁还引用这个对象”“哪条交互路径持续产生临时对象”。这些问题可以直接迁移。新增的一步是：Go 编译器可能证明对象只需活在当前调用栈，也可能因为返回、闭包、接口或无法证明生命周期而让它逃逸到堆。
+
+## 最小心智模型
+
+| 层级 | 大白话 | 主要作用 |
+| --- | --- | --- |
+| Goroutine Stack | 当前任务随身工作台 | 调用返回后容易复用，分配便宜，可增长 |
+| `mcache` | P 的本地小件货架 | 常见小对象快速分配，减少锁竞争 |
+| `mcentral` | 某个 Size Class 的共享仓库 | 给 mcache 补充 Span |
+| `mheap` | Runtime 的页面与 Span 总仓 | 管理大对象和向 OS 获取的内存 |
+
+<Mermaid
+  chart={`flowchart LR
+    C[Compiler escape analysis] --> ST[Stack]
+    C --> HP[Heap allocation]
+    HP --> MC[mcache on P]
+    MC -. refill .-> CE[mcentral by size class]
+    CE -. spans .-> MH[mheap]
+    MH --> OS[OS virtual memory]`}
+/>
+
+## Go 1.26.5 当前实现
+
+编译器先做逃逸分析，决定某个值是否能安全留在 Goroutine 栈上。堆分配再按大小与是否包含指针选择路径：极小且不含指针的对象可走 Tiny Allocator；常见小对象映射到 Size Class，从当前 P 的 `mcache` 对应 Span 取槽位；缓存不足时向 `mcentral` 获取 Span；更大的对象直接由 `mheap` 管理。
+
+Size Class 的意义不是“对象大小必须刚好匹配”，而是用少量固定规格换取快速定位和批量管理。代价是内部碎片：例如请求大小落入更大的规格，没用到的空间也被占用。
+
+Goroutine 栈可增长和搬移，Runtime 会修正栈中指针；这与把每个系统线程预留一块固定大栈的模型不同。
+
+## 类比成立范围
+
+- Chrome Allocation Timeline 与 Go `alloc_space` 都适合找“谁持续制造对象”。
+- Heap Snapshot Retainer 与 Go `inuse_space` 调用图都帮助定位“谁还持有对象”。
+- 预分配 Array 容量与预分配 Slice 容量都能减少扩容复制。
+
+## 类比失效边界
+
+- JavaScript 开发者通常不能选择对象留在栈还是堆；Go 编译器会做逃逸决策。
+- 返回指针不等于永远逃逸，内联和跨函数分析可能改变结果。
+- `new(T)` 不等于堆分配，字面量也不等于栈分配。
+- Heap Profile 不等于进程 RSS；Runtime 保留页、栈、代码、mmap 和内核记账都会造成差异。
+
+## 可运行实验
+
+```bash
+cd examples/go-runtime
+go test ./labs/memory
+go test -bench=. -benchmem ./labs/memory
+go test -gcflags='all=-m=2' ./labs/memory
+```
+
+正常现象：预分配容量的版本分配次数低于逐步增长版本。它只验证同版本同机器的趋势，不设置固定纳秒阈值。错误边界：看到 `escapes to heap` 不代表必须优化，必须先证明它处于热点路径。
+
+实验服务可以观察一段有上限的分配前后 `MemStats`：
+
+```bash
+go run ./cmd/labserver
+curl 'http://127.0.0.1:8080/work/allocate?count=512&size=4096'
+```
+
+## 真实生产故障场景
+
+JSON 接口每次请求都把未知大小结果追加到 Slice，再转成 `map[string]any` 做二次编码。流量上升后 `alloc_space` 显示编码与 Slice 扩容占主导，GC CPU 同步增加。修复点可能是预估容量、减少中间结构或流式编码，而不是盲目调大 `GOGC`。
+
+## 证据与排查
+
+| 证据 | 用法 | 结论边界 |
+| --- | --- | --- |
+| `-gcflags='all=-m=2'` | 看逃逸原因和内联 | 编译器线索，不是性能结论 |
+| `go test -benchmem` | 对比 `B/op`、`allocs/op` | 只比较同环境趋势 |
+| Heap `alloc_space` | 累计分配热点 | 适合看分配速率 |
+| Heap `inuse_space` | 采样时仍存活内存 | 适合看持有和泄漏 |
+| `runtime/metrics` | Heap、对象数、Size Class 趋势 | 需要与请求量和 GC 周期对齐 |
+| RSS / 容器内存 | 进程实际压力 | 不能直接等同 HeapAlloc |
+
+## 常见错误与版本变化
+
+- 不要用“指针在堆、值在栈”作为规则。
+- `sync.Pool` 是跨 GC 周期可被清空的临时对象复用池，不是缓存或对象生命周期管理器。
+- 过度对象池化可能增加引用存活、清零成本和复杂度，先用 Profile 证明价值。
+- Go 1.22 改变循环变量生命周期，修复大量闭包捕获陷阱；阅读旧逃逸案例时要确认版本。
+- Runtime Size Class 和内部结构不是语言兼容性承诺，文章源码固定到 go1.26.5。
+
+## 完成检查表
+
+- [x] 能解释逃逸分析与分配器的职责边界
+- [x] 能区分栈、mcache、mcentral 与 mheap
+- [x] 已运行分配测试、Benchmark 与逃逸分析命令
+- [x] 知道 HeapAlloc、HeapInuse 与 RSS 不能混为一谈
+- [x] 能用 alloc_space、inuse_space 和业务流量形成证据链

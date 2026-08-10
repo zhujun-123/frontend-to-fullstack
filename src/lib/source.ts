@@ -2,30 +2,8 @@ import { loader } from 'fumadocs-core/source';
 import { lucideIconsPlugin } from 'fumadocs-core/source/lucide-icons';
 import { docsContentRoute, docsImageRoute, docsRoute } from './shared';
 import { defineDocs } from 'fumadocs-mdx/macro';
-import { metaSchema, pageSchema } from 'fumadocs-core/source/schema';
-import { z } from 'zod';
-
-const knowledgePageSchema = pageSchema.extend({
-  type: z
-    .enum(['overview', 'roadmap', 'conceptual', 'mapping', 'guide', 'practice', 'playbook', 'resource'])
-    .default('conceptual'),
-  summary: z.string().optional(),
-  firstPrinciple: z.string().optional(),
-  frontendAnalogy: z.string().optional(),
-  prerequisites: z.array(z.string()).default([]),
-  related: z.array(z.string()).default([]),
-  sourceRefs: z
-    .array(
-      z.object({
-        title: z.string(),
-        url: z.url(),
-        kind: z.enum(['official', 'specification', 'project', 'practice']).optional(),
-        publisher: z.string().optional(),
-        license: z.string().optional(),
-      }),
-    )
-    .default([]),
-});
+import { metaSchema } from 'fumadocs-core/source/schema';
+import { knowledgePageSchema } from './content-schema';
 
 const docs = defineDocs({
   dir: 'content/docs',

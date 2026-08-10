@@ -5,8 +5,10 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   frontendGoMappings,
   mappingCategories,
+  mappingMaturities,
   mappingRelations,
   type MappingCategory,
+  type MappingMaturity,
   type MappingRelation,
 } from '@/data/frontend-go-mappings';
 
@@ -16,6 +18,7 @@ export function MappingExplorer() {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<'all' | MappingCategory>('all');
   const [relation, setRelation] = useState<'all' | MappingRelation>('all');
+  const [maturity, setMaturity] = useState<'all' | MappingMaturity>('all');
   const [learned, setLearned] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
 
@@ -47,6 +50,7 @@ export function MappingExplorer() {
     return frontendGoMappings.filter((item) => {
       const matchesCategory = category === 'all' || item.category === category;
       const matchesRelation = relation === 'all' || item.relation === relation;
+      const matchesMaturity = maturity === 'all' || item.maturity === maturity;
       const matchesQuery =
         normalizedQuery.length === 0 ||
         [item.frontend, item.go, item.shared, item.boundary]
@@ -54,9 +58,9 @@ export function MappingExplorer() {
           .toLowerCase()
           .includes(normalizedQuery);
 
-      return matchesCategory && matchesRelation && matchesQuery;
+      return matchesCategory && matchesRelation && matchesMaturity && matchesQuery;
     });
-  }, [category, query, relation]);
+  }, [category, maturity, query, relation]);
 
   const learnedSet = useMemo(() => new Set(learned), [learned]);
   const learnedCount = learned.filter((id) => frontendGoMappings.some((item) => item.id === id)).length;
@@ -92,7 +96,7 @@ export function MappingExplorer() {
           <span>搜索映射</span>
           <input
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="试试 Promise、Context、缓存…"
+            placeholder="试试 GMP、Channel、GC、缓存…"
             type="search"
             value={query}
           />
@@ -129,6 +133,22 @@ export function MappingExplorer() {
             </button>
           ))}
         </div>
+
+        <div className="mapping-filter-group mapping-maturity-filter" aria-label="按内容成熟度筛选">
+          <button className={maturity === 'all' ? 'is-active' : ''} onClick={() => setMaturity('all')} type="button">
+            所有成熟度
+          </button>
+          {(Object.entries(mappingMaturities) as [MappingMaturity, string][]).map(([key, label]) => (
+            <button
+              className={maturity === key ? 'is-active' : ''}
+              key={key}
+              onClick={() => setMaturity(key)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="mapping-result-summary">
@@ -143,6 +163,9 @@ export function MappingExplorer() {
             <article className={`mapping-card ${isLearned ? 'is-learned' : ''}`} key={item.id}>
               <div className="mapping-card-meta">
                 <span>{mappingCategories[item.category]}</span>
+                <span className={`mapping-maturity maturity-${item.maturity}`}>
+                  {mappingMaturities[item.maturity]}
+                </span>
                 <span className={`mapping-relation relation-${item.relation}`}>
                   {mappingRelations[item.relation]}
                 </span>
@@ -179,7 +202,7 @@ export function MappingExplorer() {
                 >
                   {isLearned ? '✓ 已理解' : '标记为已理解'}
                 </button>
-                {item.href ? <Link href={item.href}>阅读详解 →</Link> : <span>详解待补充</span>}
+                {item.href ? <Link href={item.href}>阅读详解 →</Link> : <span>概念索引 · 尚未验证</span>}
               </div>
             </article>
           );

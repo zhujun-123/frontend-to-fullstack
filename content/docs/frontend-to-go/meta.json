@@ -3,12 +3,21 @@
   "defaultOpen": true,
   "pages": [
     "index",
-    "array-vs-slice",
     "event-loop-vs-scheduler",
+    "gmp-scheduler",
+    "netpoll-vs-event-loop",
     "promise-vs-goroutine",
+    "channel-internals",
+    "select-internals",
     "abort-controller-vs-context",
-    "fetch-vs-http-client",
+    "mutex-atomic-memory-model",
+    "memory-allocation",
+    "garbage-collection",
+    "map-swiss-table",
     "typescript-interface-vs-go-interface",
+    "defer-panic-recover",
+    "array-vs-slice",
+    "fetch-vs-http-client",
     "error-model"
   ]
 }

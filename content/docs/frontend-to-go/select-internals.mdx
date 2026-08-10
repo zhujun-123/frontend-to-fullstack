@@ -1,0 +1,142 @@
+---
+title: select 底层原理
+description: 从 Promise.race 出发，理解 Go select 的就绪选择、Channel 加锁、等待入队、nil 与关闭边界。
+type: mapping
+maturity: verified
+summary: select 每次只完成一个可执行的 Channel 通信；Runtime 随机化轮询顺序、按稳定顺序加锁，必要时把当前 G 挂到多个 Channel 等待队列，唤醒后清理未选分支。
+firstPrinciple: 在多个可能阻塞的通信操作之间等待一个可执行事件，同时避免死锁、偏置和重复完成。
+frontendAnalogy: Promise.race 能帮助理解“先完成一个”；但 select 操作的是一次 Channel 通信，不会自动创建任务、保存结果或取消输掉的分支。
+lastVerified: '2026-08-10'
+testedWith:
+  - Go 1.26.5 darwin/arm64
+lab:
+  path: examples/go-runtime/labs/selectlab
+  commands:
+    - 'cd examples/go-runtime && go test ./labs/selectlab'
+    - 'cd examples/go-runtime && go test -race ./labs/selectlab'
+    - 'cd examples/go-runtime && go test -bench=. -benchmem ./labs/selectlab'
+prerequisites:
+  - Channel
+  - Context
+  - Promise.race
+related:
+  - Channel 底层原理
+  - Timer
+  - GMP 调度模型
+sourceRefs:
+  - title: The Go Programming Language Specification - Select statements
+    url: https://go.dev/ref/spec#Select_statements
+    kind: specification
+    publisher: Go Team
+    version: Go 1.26
+    note: Case 求值、就绪选择、default 和阻塞的语言契约。
+    verifiedAt: '2026-08-10'
+  - title: Go Runtime Source - select.go
+    url: https://github.com/golang/go/blob/go1.26.5/src/runtime/select.go
+    kind: project
+    publisher: Go Team
+    version: go1.26.5
+    note: selectgo 的轮询、锁顺序、入队、休眠和清理流程。
+    verifiedAt: '2026-08-10'
+  - title: Go Runtime Source - chan.go
+    url: https://github.com/golang/go/blob/go1.26.5/src/runtime/chan.go
+    kind: project
+    publisher: Go Team
+    version: go1.26.5
+    note: Select 与 Channel 等待队列、关闭和 Timer Channel 的协作。
+    verifiedAt: '2026-08-10'
+  - title: Go 1.23 Release Notes - Timer changes
+    url: https://go.dev/doc/go1.23#timer-changes
+    kind: official
+    publisher: Go Team
+    version: Go 1.23
+    note: Timer Channel 同步语义与 Stop/Reset 保证的变化。
+    verifiedAt: '2026-08-10'
+---
+
+## 先说人话
+
+<AnalogyStory
+  title="服务员同时盯着三个取餐铃"
+  scene="服务员同时等待后厨出菜、顾客取消和订单超时。哪个铃先具备处理条件，就先处理一个；如果三个铃同时响，也不会每次都固定先看最左边。"
+  mapping="每个 Case = 一个取餐铃；就绪 Channel = 已经响起的铃；nil Channel = 临时拔掉的铃；default = 不等铃，立刻去做别的事。"
+  takeaway="select 每次只提交一个可执行的 Channel 通信；没有就绪 Case 时可阻塞，也可因 default 立即返回。"
+  boundary="选中一个铃不会自动取消另外两个任务。把 default 放进紧循环，相当于服务员不停查看没响的铃，很容易把 CPU 跑满。"
+/>
+
+## 问题与系统不变量
+
+一个 Goroutine 可能同时等待结果、超时和取消。select 必须保证一次只提交一个通信操作；多个 Channel 同时参与时要以一致锁顺序避免死锁；未被选中的等待节点必须清理，否则会重复唤醒或泄漏。
+
+## 前端认知起点
+
+`Promise.race([work, timeout])` 可以帮助理解“多个候选中先处理一个”。Go 需要更细地思考：每个 Case 是发送还是接收，Channel 是否 nil/关闭，选中一次后其他生产者是否仍在运行，以及取消信号由谁传播。
+
+## 最小心智模型
+
+1. 先求值所有 Channel 与发送表达式。
+2. 随机化 Case 的轮询顺序，减少长期固定偏置。
+3. 按 Channel 地址排序得到稳定加锁顺序。
+4. 第一轮查找已就绪通信；没有就绪且有 default，立即执行 default。
+5. 需要阻塞时，把当前 G 以多个 `sudog` 节点加入相关等待队列并 park。
+6. 某个 Case 唤醒后，清理其他 Channel 上未选中的等待节点。
+
+## Go 1.26.5 当前实现
+
+`runtime.selectgo` 为 Case 生成 `pollorder` 和 `lockorder`。轮询顺序采用伪随机排列；锁顺序按 Channel 排序，保证多个 select 即使 Case 顺序不同也不会反向加锁。准备阻塞时，一个 G 会对应多个等待节点，但最终只有一个 Case 获胜。
+
+nil Channel 的 Case 永远不就绪，因此常用把 Channel 设为 nil 动态禁用分支。已关闭 Channel 的接收立即就绪并返回零值与 `ok=false`；向已关闭 Channel 发送会 panic。
+
+## 类比成立范围
+
+- 都能组合业务结果、超时和取消。
+- 都要求处理“输掉的任务是否还在继续”。
+- 都不能用单次先后现象推断稳定优先级。
+
+## 类比失效边界
+
+- `Promise.race` 返回第一个 settled Promise；select 只提交一次可执行 Channel 通信。
+- select 不自动取消其他 Goroutine，也不消费其他 Channel 的结果。
+- 多个 Case 同时就绪时采用伪随机选择，不按源码从上到下保证优先级。
+- `default` 会把阻塞等待变成轮询；放在紧循环中可能造成 CPU Busy Loop。
+
+## 可运行实验
+
+```bash
+cd examples/go-runtime
+go test ./labs/selectlab
+go test -race ./labs/selectlab
+go test -bench=. -benchmem ./labs/selectlab
+```
+
+正常实验验证 nil Case 被禁用、就绪 Channel 被选择、Context 取消能结束等待。错误边界实验验证关闭 Channel 立即就绪，调用方必须检查 `ok`，否则零值可能被误当成真实结果。
+
+## 真实生产故障场景
+
+一个 Worker 使用 `select { case job := <-jobs: ... default: }` 放在无休眠循环中，希望“提高吞吐”。当队列为空时它占满 CPU；队列关闭后又没有检查 `ok`，开始无限处理零值 Job。故障同时表现为 CPU 高、日志暴增和无效下游请求。
+
+## 证据与排查
+
+| 证据 | 重点 |
+| --- | --- |
+| CPU Profile | `selectnbrecv`、业务循环或 default 分支是否成为热点 |
+| Goroutine Dump | `select` 阻塞栈、等待 Context 或 Timer 的位置 |
+| Trace | Case 唤醒、Timer、Netpoll 与调度延迟 |
+| 日志 | 选中来源、关闭、取消原因；采样避免热循环刷屏 |
+| 指标 | 队列深度、空轮询次数、超时/取消比例、Worker 数 |
+
+## 常见错误与版本变化
+
+- 接收表达式必须使用 `value, ok := <-ch` 处理关闭边界。
+- nil Channel 可禁用 Case，但如果所有 Case 都是 nil 且没有 default，select 永久阻塞。
+- `time.After` 在高频循环中会创建 Timer；可复用 Timer 时要正确 Stop/Reset。
+- Go 1.23 起 Timer Channel 对外同步，未引用且未停止的 Timer 可被 GC 回收，`Stop`/`Reset` 后不会再收到旧值；旧教程中的 Drain 模式要结合模块 Go 版本判断。
+- 不要用 Case 源码顺序表达优先级，需要优先级时拆成两阶段选择或显式队列。
+
+## 完成检查表
+
+- [x] 能解释 pollorder、lockorder、入队与清理
+- [x] 能区分 Promise.race 与单次 Channel 通信
+- [x] 已运行就绪、取消、关闭、Race 与 Benchmark 实验
+- [x] 知道 nil、closed 和 default Busy Loop 边界
+- [x] 能用 CPU Profile、Dump、Trace、日志和队列指标排查问题

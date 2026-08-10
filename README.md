@@ -16,7 +16,11 @@
 - Fetch → `net/http.Client`
 - TypeScript Interface → Go Interface
 - try/catch → Go error
-- 30 条可搜索、可筛选的结构化映射
+- 10 篇带官方来源、版本边界、可运行 Lab 与生产证据的已验证专题
+- 统一使用餐厅故事增加大白话解释，并在每个比喻后标明失效边界
+- 6 篇经过官方资料校对、等待补齐独立实验的专题
+- 43 条带明确成熟度、可搜索可筛选的结构化映射
+- Go 1.26.5 Runtime Labs 与本地 pprof / expvar 实验服务
 - 12 条覆盖接手、开发、数据、发布和生产排障的任务配方
 - 任务配方支持按阶段、输入材料筛选和一键复制
 - 基于 localStorage 的学习进度
@@ -45,9 +49,13 @@ pnpm dev
 ## 校验
 
 ```bash
+pnpm content:check
 pnpm lint
 pnpm types:check
 pnpm build
+pnpm labs:vet
+pnpm labs:test
+pnpm labs:race
 ```
 
 ## 内容约定
@@ -55,13 +63,18 @@ pnpm build
 每篇知识文章在 Frontmatter 中维护：
 
 - `type`：内容类型
+- `maturity`：`outline | reviewed | verified`
 - `summary`：核心结论
 - `firstPrinciple`：该主题不依赖具体工具的底层问题
 - `frontendAnalogy`：前端开发者已有的认知起点
+- `lastVerified`、`testedWith`：最后核验日期与真实验证环境
+- `lab`：实验目录和可运行命令
 - `prerequisites`：前置知识
 - `related`：关联知识
-- `sourceRefs`：参考来源，可附来源类型、发布方和许可证
+- `sourceRefs`：参考来源，可附来源类型、发布方、版本、核验日期和适用说明
 
-第三方资料只作为事实来源和学习索引，正文需要独立编写，并遵守对应许可证。
+`verified` 专题还必须包含系统不变量、当前实现、类比范围与失效边界、正常实验、错误边界、生产故障和证据化排查。第三方资料只作为问题发现和学习索引，机制结论优先回到规范、官方文档和固定版本源码。
+
+Go 实验说明见 [`examples/go-runtime/README.md`](./examples/go-runtime/README.md)。
 
 贡献新内容前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。

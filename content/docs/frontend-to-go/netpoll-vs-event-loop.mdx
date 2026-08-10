@@ -1,0 +1,150 @@
+---
+title: Netpoll、epoll/kqueue 与 Event Loop
+description: 从浏览器和 Node.js Event Loop 出发，理解 Go 网络 I/O 如何挂起 Goroutine、等待就绪并回到 GMP 调度器。
+type: mapping
+maturity: verified
+summary: Go Netpoll 用 epoll、kqueue 等平台机制等待文件描述符就绪，把网络读写阻塞的 Goroutine 挂起，并在就绪、超时或关闭时重新放回可运行队列。
+firstPrinciple: 大量连接大部分时间都在等待 I/O，系统应让等待者不占用系统线程，并在事件就绪时以有限成本恢复对应任务。
+frontendAnalogy: libuv 与 Netpoll 都复用操作系统 I/O 就绪通知；Go 继续执行的是阻塞式代码风格的 Goroutine，不是单线程回调队列。
+lastVerified: '2026-08-10'
+testedWith:
+  - Go 1.26.5 darwin/arm64
+lab:
+  path: examples/go-runtime/labs/netpoll
+  commands:
+    - 'cd examples/go-runtime && go test ./labs/netpoll'
+    - 'cd examples/go-runtime && go test -race ./labs/netpoll'
+    - 'cd examples/go-runtime && go test -bench=. -benchmem ./labs/netpoll'
+prerequisites:
+  - Event Loop
+  - Socket 与文件描述符
+  - GMP 调度模型
+related:
+  - net/http Client
+  - Context 与 Deadline
+  - Trace
+sourceRefs:
+  - title: Go Runtime Source - netpoll.go
+    url: https://github.com/golang/go/blob/go1.26.5/src/runtime/netpoll.go
+    kind: project
+    publisher: Go Team
+    version: go1.26.5
+    note: pollDesc、读写等待、Deadline、关闭与唤醒的跨平台实现。
+    verifiedAt: '2026-08-10'
+  - title: Go Runtime Source - netpoll_epoll.go
+    url: https://github.com/golang/go/blob/go1.26.5/src/runtime/netpoll_epoll.go
+    kind: project
+    publisher: Go Team
+    version: go1.26.5 linux
+    note: Linux epoll 与 eventfd 唤醒实现。
+    verifiedAt: '2026-08-10'
+  - title: Go Runtime Source - netpoll_kqueue.go
+    url: https://github.com/golang/go/blob/go1.26.5/src/runtime/netpoll_kqueue.go
+    kind: project
+    publisher: Go Team
+    version: go1.26.5 BSD/Darwin
+    note: Darwin/BSD kqueue 事件等待与唤醒实现。
+    verifiedAt: '2026-08-10'
+  - title: Package net
+    url: https://pkg.go.dev/net
+    kind: official
+    publisher: Go Team
+    version: Go 1.26.5
+    note: Conn、Listener、Deadline 与并发使用的公共契约。
+    verifiedAt: '2026-08-10'
+---
+
+## 先说人话
+
+<AnalogyStory
+  title="取餐震动器让顾客不用守在窗口"
+  scene="顾客点餐后拿着震动器离开，不需要一直占住窗口追问有没有做好。后厨准备完成时让震动器响起，顾客再回来取餐，窗口可以继续服务其他人。"
+  mapping="等待网络数据的 Goroutine = 等餐顾客；pollDesc = 绑定订单的震动器；epoll/kqueue = 统一监听震动器的系统；GMP = 收到通知后重新安排顾客办理取餐。"
+  takeaway="Socket 暂不可读写时，Netpoll 挂起对应 G；操作系统报告文件描述符就绪、超时或关闭后，Runtime 再把 G 放回可运行队列。"
+  boundary="震动器只告诉你可以来取，不保证整份订单已经按业务协议组装完成。Netpoll 也不处理所有文件、cgo 或系统调用阻塞。"
+/>
+
+## 问题与系统不变量
+
+如果每个等待网络数据的连接都长期占住一个系统线程，连接数上升会迅速消耗线程、栈和切换成本。Netpoll 必须在 I/O 暂不可用时安全挂起对应 G，并在就绪、Deadline、关闭或错误发生时只唤醒正确的读写等待者。
+
+## 前端认知起点
+
+Node.js/libuv 也把 Socket 注册到 epoll/kqueue 等机制，收到就绪事件后推进任务。Go 的迁移重点是：业务仍可写同步阻塞风格的 `Read`/`Write`，Runtime 在下面把等待转换成 Goroutine park 和 ready。
+
+## 最小心智模型
+
+<Mermaid
+  chart={`flowchart LR
+    G[G calls Conn.Read] --> NB[Non-blocking syscall]
+    NB -- data ready --> R[Return bytes]
+    NB -- EAGAIN --> PD[pollDesc read waiter]
+    PD --> PK[Park G]
+    OS[epoll or kqueue] --> EV[FD readiness]
+    EV --> RD[Mark G runnable]
+    RD --> GMP[GMP scheduler]
+    GMP --> NB`}
+/>
+
+`pollDesc` 分别跟踪读和写等待者，并保存关闭状态、序列号与读写 Deadline Timer。序列号用于避免文件描述符关闭复用后的旧事件错误唤醒新连接。
+
+## Go 1.26.5 当前实现
+
+`internal/poll` 与 Runtime Netpoll 协作。Socket 被设置为非阻塞并注册到平台 Poller：Linux 使用 epoll，Darwin/BSD 使用 kqueue。读写遇到暂不可用时，当前 G 通过 `pollDesc` 的读或写信号量 park；Poller 返回就绪事件后，Runtime 把相应 G 放回可运行队列。
+
+Deadline 由 `pollDesc` 中的 Timer 参与，在到期时解除等待并返回超时错误。关闭连接也会发布关闭状态并唤醒等待者。Netpoll 只负责 I/O 就绪与唤醒，真正执行 Go 代码仍由 GMP 调度器完成。
+
+## 类比成立范围
+
+- libuv 和 Netpoll 都使用操作系统就绪通知承载大量 Socket。
+- 前端 Abort/Timeout 与 Go Context/Deadline 都要沿请求链传播。
+- 浏览器 Network Timing 与 Go `httptrace` 都能拆 DNS、连接、TLS 和首字节时间。
+
+## 类比失效边界
+
+- Netpoll 不是运行 JavaScript Callback 的 Event Loop，也不是唯一的 Go 调度器。
+- 不是所有阻塞都能被 Netpoll 接管：普通文件、某些系统调用、cgo 和特定 DNS 路径可能阻塞系统线程。
+- Socket 就绪不等于完整业务消息已到达；应用协议仍要处理半包、EOF 和长度边界。
+- 一个连接一个 Goroutine 很常见，但仍必须限制连接、请求和下游并发总量。
+
+## 可运行实验
+
+```bash
+cd examples/go-runtime
+go test ./labs/netpoll
+go test -race ./labs/netpoll
+go test -bench=. -benchmem ./labs/netpoll
+```
+
+正常实验在 `127.0.0.1` 建立真实 TCP Listener，完成有边界的 Echo Round Trip。错误边界实验使用已取消 Context，确认 Dial 不会无限等待。Benchmark 每次创建连接，主要用于观察趋势，不代表连接复用后的 HTTP 性能。
+
+## 真实生产故障场景
+
+HTTP Client 没有总超时，连接池又允许大量等待。下游发生半开连接后，数千个 Goroutine 堆在网络读取；CPU 不高，但请求 P99、Goroutine 数和文件描述符持续上涨。Netpoll 正常工作并不意味着业务有正确 Deadline。
+
+## 证据与排查
+
+| 证据 | 重点 |
+| --- | --- |
+| Goroutine Dump | `IO wait`、`net.(*netFD).Read`、TLS 或连接池等待栈 |
+| Trace | Network Block、Syscall、调度恢复和请求 Span 时间关系 |
+| `httptrace` / OTel | DNS、Connect、TLS、TTFB、连接复用 |
+| Socket 工具 | `lsof`、`ss`/`netstat` 的 FD 数、状态和远端地址 |
+| Client/Server 指标 | 活跃连接、Idle、等待连接、超时、EOF、Reset |
+| CPU Profile | TLS、编解码或 Busy Loop，而非仅凭低 CPU 排除故障 |
+
+## 常见错误与版本变化
+
+- 只有 `http.Client.Timeout`、Transport 各阶段超时和 Context 共同设计，才能形成完整时间预算。
+- 忘记关闭 HTTP Response Body 会阻碍连接复用并增加 FD/连接压力。
+- `Read` 返回 `n > 0` 时可以同时返回非 nil error，调用方应先处理已读数据再处理错误。
+- epoll/kqueue 是平台实现；Windows 使用不同机制，不能把 Linux 细节写成跨平台语言保证。
+- Go Runtime Netpoll 内部结构持续演进，本文源码固定到 go1.26.5，公共行为以 `net` 契约为准。
+
+## 完成检查表
+
+- [x] 能解释非阻塞 Socket、pollDesc、park 与 ready
+- [x] 能区分 Netpoll、GMP 与 Event Loop
+- [x] 已运行 TCP、取消、Race 与 Benchmark 实验
+- [x] 知道 Netpoll 不等于所有 I/O 都不阻塞线程
+- [x] 能用 Dump、Trace、httptrace、FD 和连接池指标定位网络等待

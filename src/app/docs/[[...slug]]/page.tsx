@@ -30,6 +30,12 @@ const sourceKindLabels = {
   practice: '实践资料',
 } as const;
 
+const maturityLabels = {
+  outline: '概念索引 · 尚未验证',
+  reviewed: '已校对',
+  verified: '已验证',
+} as const;
+
 export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   const params = await props.params;
   const page = source.getPage(params.slug);
@@ -49,12 +55,20 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
       {(page.data.summary ||
         page.data.firstPrinciple ||
         page.data.frontendAnalogy ||
+        page.data.lastVerified ||
+        page.data.testedWith.length > 0 ||
+        page.data.lab ||
         page.data.prerequisites.length > 0 ||
         page.data.related.length > 0) && (
         <div className="knowledge-meta">
           <div className="knowledge-meta-row">
             <span className="knowledge-meta-label">内容类型</span>
-            <span className="knowledge-meta-chip">{typeLabels[page.data.type]}</span>
+            <span className="knowledge-meta-values">
+              <span className="knowledge-meta-chip">{typeLabels[page.data.type]}</span>
+              <span className={`knowledge-meta-chip maturity-${page.data.maturity}`}>
+                {maturityLabels[page.data.maturity]}
+              </span>
+            </span>
           </div>
           {page.data.summary ? (
             <div className="knowledge-meta-row">
@@ -72,6 +86,35 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
             <div className="knowledge-meta-row">
               <span className="knowledge-meta-label">前端认知起点</span>
               <span>{page.data.frontendAnalogy}</span>
+            </div>
+          ) : null}
+          {page.data.lastVerified ? (
+            <div className="knowledge-meta-row">
+              <span className="knowledge-meta-label">最后核验</span>
+              <span>{page.data.lastVerified}</span>
+            </div>
+          ) : null}
+          {page.data.testedWith.length > 0 ? (
+            <div className="knowledge-meta-row">
+              <span className="knowledge-meta-label">实际验证</span>
+              <span className="knowledge-meta-values">
+                {page.data.testedWith.map((item) => (
+                  <span className="knowledge-meta-chip" key={item}>
+                    {item}
+                  </span>
+                ))}
+              </span>
+            </div>
+          ) : null}
+          {page.data.lab ? (
+            <div className="knowledge-meta-row">
+              <span className="knowledge-meta-label">实验入口</span>
+              <span className="knowledge-lab">
+                <code>{page.data.lab.path}</code>
+                {page.data.lab.commands.map((command) => (
+                  <code key={command}>{command}</code>
+                ))}
+              </span>
             </div>
           ) : null}
           {page.data.prerequisites.length > 0 ? (
@@ -121,7 +164,10 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
                       {sourceRef.kind ? sourceKindLabels[sourceRef.kind] : null}
                       {sourceRef.publisher ? ` · ${sourceRef.publisher}` : null}
                       {sourceRef.license ? ` · ${sourceRef.license}` : null}
+                      {sourceRef.version ? ` · ${sourceRef.version}` : null}
+                      {sourceRef.verifiedAt ? ` · 核验于 ${sourceRef.verifiedAt}` : null}
                     </span>
+                    {sourceRef.note ? <span className="source-ref-note">{sourceRef.note}</span> : null}
                   </div>
                 </li>
               ))}

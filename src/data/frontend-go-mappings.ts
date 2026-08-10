@@ -1,5 +1,6 @@
-export type MappingCategory = 'language' | 'concurrency' | 'web' | 'data' | 'engineering';
+export type MappingCategory = 'language' | 'concurrency' | 'runtime' | 'web' | 'data' | 'engineering';
 export type MappingRelation = 'same' | 'partial' | 'dangerous';
+export type MappingMaturity = 'outline' | 'reviewed' | 'verified';
 
 export interface FrontendGoMapping {
   id: string;
@@ -7,6 +8,7 @@ export interface FrontendGoMapping {
   go: string;
   category: MappingCategory;
   relation: MappingRelation;
+  maturity: MappingMaturity;
   shared: string;
   boundary: string;
   href?: string;
@@ -15,6 +17,7 @@ export interface FrontendGoMapping {
 export const mappingCategories: Record<MappingCategory, string> = {
   language: '语言与类型',
   concurrency: '异步与并发',
+  runtime: '运行时与内存',
   web: 'HTTP 与服务',
   data: '数据与状态',
   engineering: '工程与生产',
@@ -26,7 +29,36 @@ export const mappingRelations: Record<MappingRelation, string> = {
   dangerous: '危险类比',
 };
 
-export const frontendGoMappings: FrontendGoMapping[] = [
+export const mappingMaturities: Record<MappingMaturity, string> = {
+  verified: '已验证',
+  reviewed: '已校对',
+  outline: '概念索引 · 尚未验证',
+};
+
+const verifiedMappingIds = new Set([
+  'object-struct-map',
+  'interface-interface',
+  'event-loop-scheduler',
+  'shared-store-sync',
+  'gmp-runtime',
+  'message-channel-go-channel',
+  'promise-race-select',
+  'concurrency-limit-buffered-channel',
+  'closure-escape-analysis',
+  'js-heap-go-heap',
+  'allocator-fast-path',
+  'object-pool-sync-pool',
+  'v8-go-gc',
+  'gc-pause-stw',
+  'memory-timeline-pprof',
+  'tab-runtime-leak',
+  'finalization-cleanup',
+  'try-catch-error',
+]);
+
+const reviewedMappingIds = new Set(['array-slice', 'promise-goroutine', 'abort-context', 'fetch-http-client']);
+
+const mappingDefinitions: Omit<FrontendGoMapping, 'maturity'>[] = [
   {
     id: 'array-slice',
     frontend: 'JavaScript Array',
@@ -39,12 +71,13 @@ export const frontendGoMappings: FrontendGoMapping[] = [
   },
   {
     id: 'object-struct-map',
-    frontend: 'JavaScript Object',
-    go: 'Struct / Map',
+    frontend: 'JavaScript Map / Object',
+    go: 'Go Map / Swiss Table',
     category: 'language',
-    relation: 'partial',
-    shared: '组织一组有关联的数据。',
-    boundary: '固定字段的数据优先使用 Struct；Map 更适合动态键值，不能把所有对象都翻译成 map[string]any。',
+    relation: 'dangerous',
+    shared: '通过 Key 查找和更新 Value。',
+    boundary: 'Go 1.24+ 使用 Swiss Table；Map 不是并发安全容器，也不能把固定业务结构全部写成 map[string]any。',
+    href: '/docs/frontend-to-go/map-swiss-table',
   },
   {
     id: 'class-struct-method',
@@ -103,13 +136,13 @@ export const frontendGoMappings: FrontendGoMapping[] = [
   },
   {
     id: 'event-loop-scheduler',
-    frontend: 'Event Loop',
-    go: 'Goroutine Scheduler',
+    frontend: 'Event Loop / libuv',
+    go: 'Netpoll / epoll / kqueue',
     category: 'concurrency',
     relation: 'partial',
-    shared: '决定等待中的任务何时获得执行机会。',
-    boundary: 'JavaScript 通常围绕事件循环线程推进任务；Go 会把 Goroutine 调度到多个系统线程。',
-    href: '/docs/frontend-to-go/event-loop-vs-scheduler',
+    shared: '让大量网络连接等待就绪，而不是让每个等待都长期占住线程。',
+    boundary: 'Netpoll 只处理网络 I/O 就绪并把 Goroutine 交回调度器，不是一个执行 JavaScript 回调的事件循环。',
+    href: '/docs/frontend-to-go/netpoll-vs-event-loop',
   },
   {
     id: 'promise-goroutine',
@@ -175,6 +208,137 @@ export const frontendGoMappings: FrontendGoMapping[] = [
     relation: 'dangerous',
     shared: '协调多处代码对同一份状态的访问。',
     boundary: '服务端可能有真实并行写入，仅依靠不可变更新习惯不能保证并发安全。',
+    href: '/docs/frontend-to-go/mutex-atomic-memory-model',
+  },
+  {
+    id: 'gmp-runtime',
+    frontend: 'Event Loop + Web Worker',
+    go: 'GMP Scheduler',
+    category: 'runtime',
+    relation: 'partial',
+    shared: '都在把大量待执行任务安排到有限的执行资源上。',
+    boundary: 'Goroutine 会被调度到多个系统线程；P 是运行 Go 代码所需的调度资源，不是 CPU，也不是 Worker。',
+    href: '/docs/frontend-to-go/gmp-scheduler',
+  },
+  {
+    id: 'message-channel-go-channel',
+    frontend: 'MessageChannel / Async Queue',
+    go: 'Channel',
+    category: 'runtime',
+    relation: 'partial',
+    shared: '让生产者与消费者通过消息解耦。',
+    boundary: 'Go Channel 有类型、容量、阻塞、关闭和同步语义，不等于广播事件总线或无限消息队列。',
+    href: '/docs/frontend-to-go/channel-internals',
+  },
+  {
+    id: 'promise-race-select',
+    frontend: 'Promise.race',
+    go: 'select',
+    category: 'runtime',
+    relation: 'dangerous',
+    shared: '从多个可能先完成的操作中处理一个结果。',
+    boundary: 'Promise.race 观察第一个 settled 的 Promise；select 选择一次可执行的 Channel 通信，而且不会自动取消其他任务。',
+    href: '/docs/frontend-to-go/select-internals',
+  },
+  {
+    id: 'concurrency-limit-buffered-channel',
+    frontend: 'p-limit / 请求并发池',
+    go: 'Buffered Channel / Semaphore',
+    category: 'runtime',
+    relation: 'partial',
+    shared: '用有限令牌限制同时执行的任务数量。',
+    boundary: 'Channel 容量限制的是令牌或排队槽位；任务取消、错误传播和公平性仍需单独设计。',
+    href: '/docs/frontend-to-go/channel-internals',
+  },
+  {
+    id: 'closure-escape-analysis',
+    frontend: 'Closure 持有外部对象',
+    go: 'Escape Analysis',
+    category: 'runtime',
+    relation: 'dangerous',
+    shared: '变量的实际生命周期可能超过创建它的函数调用。',
+    boundary: '前端关注运行时引用是否仍可达；Go Escape Analysis 是编译器决定值放在栈还是堆上的过程。',
+    href: '/docs/frontend-to-go/memory-allocation',
+  },
+  {
+    id: 'js-heap-go-heap',
+    frontend: 'JavaScript Heap',
+    go: 'Go Heap',
+    category: 'runtime',
+    relation: 'partial',
+    shared: '保存不能随当前调用立即回收、并由 GC 管理的对象。',
+    boundary: 'Go 值放栈还是堆主要由 Escape Analysis 决定，使用 new、make 或指针并不必然代表堆分配。',
+    href: '/docs/frontend-to-go/memory-allocation',
+  },
+  {
+    id: 'allocator-fast-path',
+    frontend: 'V8 Allocation Fast Path',
+    go: 'mcache / mcentral / mheap',
+    category: 'runtime',
+    relation: 'partial',
+    shared: '先走本地快速分配，资源不足时再向更高层申请。',
+    boundary: 'Go 按 Size Class 和 Span 管理小对象，mcache 归属于 P；不能直接套用 V8 新生代空间的布局。',
+    href: '/docs/frontend-to-go/memory-allocation',
+  },
+  {
+    id: 'object-pool-sync-pool',
+    frontend: 'Object Pool',
+    go: 'sync.Pool',
+    category: 'runtime',
+    relation: 'dangerous',
+    shared: '复用临时对象，减少高频分配带来的成本。',
+    boundary: 'sync.Pool 中的对象可能随时被运行时移除，不能保存连接、业务状态或任何必须取回的资源。',
+    href: '/docs/frontend-to-go/memory-allocation',
+  },
+  {
+    id: 'v8-go-gc',
+    frontend: 'V8 Generational GC',
+    go: 'Concurrent Mark-Sweep GC',
+    category: 'runtime',
+    relation: 'dangerous',
+    shared: '从根对象出发找到仍可达的数据，并回收不可达内存。',
+    boundary: 'Go GC 不是 V8 那套分代回收模型；理解调优时应关注活跃堆、分配速率、扫描量和 CPU 开销。',
+    href: '/docs/frontend-to-go/garbage-collection',
+  },
+  {
+    id: 'gc-pause-stw',
+    frontend: 'JS GC Pause / Long Task',
+    go: 'STW / Mark Assist',
+    category: 'runtime',
+    relation: 'partial',
+    shared: '内存回收可能抢占应用执行时间，并表现为延迟抖动。',
+    boundary: 'Go 大部分标记工作与业务并发执行，但仍有短暂 STW；分配过快时 Goroutine 还会被要求协助标记。',
+    href: '/docs/frontend-to-go/garbage-collection',
+  },
+  {
+    id: 'memory-timeline-pprof',
+    frontend: 'Chrome Memory Timeline',
+    go: 'pprof heap / allocs',
+    category: 'runtime',
+    relation: 'partial',
+    shared: '用采样和快照定位谁在持续分配或持有内存。',
+    boundary: 'inuse_space 回答当前谁占着内存，alloc_space 回答历史上谁分配最多，两者不能混为一谈。',
+    href: '/docs/frontend-to-go/memory-allocation',
+  },
+  {
+    id: 'tab-runtime-leak',
+    frontend: 'Tab / Listener / Timer 泄漏',
+    go: 'Goroutine / Channel / Timer 泄漏',
+    category: 'runtime',
+    relation: 'partial',
+    shared: '任务虽然失去业务价值，却仍被引用、等待或定时唤醒，资源因此无法释放。',
+    boundary: 'Go 泄漏不一定先表现为堆上涨，也可能先出现 Goroutine 数、连接数或定时器持续增加。',
+    href: '/docs/frontend-to-go/channel-internals',
+  },
+  {
+    id: 'finalization-cleanup',
+    frontend: 'FinalizationRegistry',
+    go: 'runtime.AddCleanup / SetFinalizer',
+    category: 'runtime',
+    relation: 'dangerous',
+    shared: '在对象不可达后尝试执行清理逻辑。',
+    boundary: '执行时机和是否执行都不适合作为正确性保证；文件、锁和连接仍应显式 Close 或释放。',
+    href: '/docs/frontend-to-go/garbage-collection',
   },
   {
     id: 'fetch-http-client',
@@ -269,13 +433,13 @@ export const frontendGoMappings: FrontendGoMapping[] = [
   },
   {
     id: 'try-catch-error',
-    frontend: 'try / catch',
-    go: 'error / panic / recover',
+    frontend: 'try / finally / throw',
+    go: 'defer / panic / recover',
     category: 'engineering',
     relation: 'dangerous',
-    shared: '处理正常流程之外的失败。',
-    boundary: 'Go 把可预期失败放进显式返回值；panic 不应该成为普通业务异常机制。',
-    href: '/docs/frontend-to-go/error-model',
+    shared: '在函数退出或异常展开时执行清理，并处理不可继续的异常状态。',
+    boundary: 'defer 不是异常捕获；可预期业务失败仍应返回 error，panic/recover 不应复制成 throw/catch 工作流。',
+    href: '/docs/frontend-to-go/defer-panic-recover',
   },
   {
     id: 'test-runner-testing',
@@ -305,3 +469,17 @@ export const frontendGoMappings: FrontendGoMapping[] = [
     boundary: '服务端还需分析 Goroutine、锁竞争、GC 和跨服务耗时，不能只看单次本地执行。',
   },
 ];
+
+export const frontendGoMappings: FrontendGoMapping[] = mappingDefinitions
+  .map((item) => ({
+    ...item,
+    maturity: verifiedMappingIds.has(item.id)
+      ? ('verified' as const)
+      : reviewedMappingIds.has(item.id)
+        ? ('reviewed' as const)
+        : ('outline' as const),
+  }))
+  .sort((left, right) => {
+    const priority: Record<MappingMaturity, number> = { verified: 0, reviewed: 1, outline: 2 };
+    return priority[left.maturity] - priority[right.maturity];
+  });

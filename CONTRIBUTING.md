@@ -4,16 +4,23 @@
 
 ## 内容标准
 
-每个映射或全链路专题应当回答：
+每个 `verified` 映射专题必须回答：
 
-1. 前端开发者已经熟悉什么？
-2. 两边解决的共同问题是什么？
-3. 类比在哪些范围成立？
-4. 哪些地方不能照搬？
-5. 在真实项目中最容易出现什么问题？
-6. 读者可以完成什么练习来验证理解？
-7. 不依赖当前工具品牌的第一性原理是什么？
-8. 什么证据能够证明读者已经完成这一阶段？
+1. 用统一生活场景“先说人话”，并明确角色映射与类比边界。
+2. 问题与系统不变量。
+3. 前端认知起点。
+4. 最小心智模型。
+5. 当前 Go 版本如何实现。
+6. 类比成立范围。
+7. 类比失效边界。
+8. 可运行实验、命令和预期现象。
+9. 真实生产故障场景。
+10. pprof、trace、日志或指标证据。
+11. 常见错误与版本变化。
+12. 完成检查表。
+13. 稳定的官方来源。
+
+`reviewed` 表示解释已经过官方来源校对但没有独立 Lab；`outline` 只作为概念索引，不作为完成专题。
 
 ## Frontmatter
 
@@ -22,9 +29,17 @@
 title: Promise 与 Goroutine
 description: 区分异步任务、未来结果、并发通信和取消机制。
 type: mapping
+maturity: verified
 summary: 一句话核心结论。
 firstPrinciple: 不依赖具体框架和工具的底层问题。
 frontendAnalogy: 前端开发者已经掌握的认知起点。
+lastVerified: '2026-08-10'
+testedWith:
+  - Go 1.26.5 darwin/arm64
+lab:
+  path: examples/go-runtime/labs/topic
+  commands:
+    - 'cd examples/go-runtime && go test ./labs/topic'
 prerequisites:
   - Promise 与 async/await
 related:
@@ -34,6 +49,9 @@ sourceRefs:
     url: https://go.dev/
     kind: official
     publisher: Go Team
+    version: Go 1.26.5
+    note: 该来源用于核验什么结论。
+    verifiedAt: '2026-08-10'
 ---
 ```
 
@@ -49,9 +67,13 @@ sourceRefs:
 
 ```bash
 pnpm install
+pnpm content:check
 pnpm lint
 pnpm types:check
 pnpm build
+pnpm labs:vet
+pnpm labs:test
+pnpm labs:race
 ```
 
 提交 Pull Request 前，请确认没有引入未注明来源的大段第三方内容。

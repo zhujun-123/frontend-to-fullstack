@@ -1,52 +1,148 @@
 ---
-title: TypeScript Interface 与 Go Interface
-description: 两种结构化类型能力看起来相似，但存在于不同的运行阶段。
+title: Interface、Method Set 与 typed nil
+description: 从 TypeScript 结构化类型出发，理解 Go Interface 的方法集合、运行时值、typed nil 与生产边界。
 type: mapping
-summary: 两者都允许类型在没有显式声明关系时满足契约，但 TypeScript 类型会被擦除，Go Interface 会参与编译和运行时行为。
+maturity: verified
+summary: Go Interface 由动态类型与动态值共同构成；方法接收者决定 Method Set，只有动态类型和值都为空时接口才等于 nil。
+firstPrinciple: 用最小行为契约解耦调用方与实现，同时让编译器和运行时准确知道可调用的方法与动态值。
+frontendAnalogy: TypeScript Interface 的结构化满足关系可以迁移；类型擦除、null 判断和大型 DTO Interface 的习惯不能直接迁移。
+lastVerified: '2026-08-10'
+testedWith:
+  - Go 1.26.5 darwin/arm64
+lab:
+  path: examples/go-runtime/labs/interfaces
+  commands:
+    - 'cd examples/go-runtime && go test ./labs/interfaces'
+    - 'cd examples/go-runtime && go test -bench=. -benchmem ./labs/interfaces'
 prerequisites:
-  - TypeScript 结构化类型
-  - Go 方法定义
+  - TypeScript Interface
+  - Go Method
+  - 指针与 nil
 related:
-  - Struct 与 Class
-  - 组合优于继承
+  - error 模型
+  - Struct 与组合
+  - 依赖倒置
 sourceRefs:
-  - title: TypeScript Handbook - Object Types
-    url: https://www.typescriptlang.org/docs/handbook/2/objects.html
-  - title: Learn Go with Tests - Structs, Methods and Interfaces
-    url: https://github.com/quii/learn-go-with-tests
-  - title: Effective Go - Interfaces
-    url: https://go.dev/doc/effective_go#interfaces
+  - title: The Go Programming Language Specification - Interface types
+    url: https://go.dev/ref/spec#Interface_types
+    kind: specification
+    publisher: Go Team
+    version: Go 1.26
+    note: Interface Type Set、实现关系和可比较性的语言契约。
+    verifiedAt: '2026-08-10'
+  - title: The Go Programming Language Specification - Method sets
+    url: https://go.dev/ref/spec#Method_sets
+    kind: specification
+    publisher: Go Team
+    version: Go 1.26
+    note: T 与指针 *T 的 Method Set 规则。
+    verifiedAt: '2026-08-10'
+  - title: Go Runtime Source - runtime2.go
+    url: https://github.com/golang/go/blob/go1.26.5/src/runtime/runtime2.go
+    kind: project
+    publisher: Go Team
+    version: go1.26.5
+    note: iface 与 eface 的固定版本运行时表示。
+    verifiedAt: '2026-08-10'
+  - title: Go FAQ - Why is my nil error value not equal to nil?
+    url: https://go.dev/doc/faq#nil_error
+    kind: official
+    publisher: Go Team
+    version: current
+    note: typed nil 进入 Interface 后不等于 nil 的官方解释。
+    verifiedAt: '2026-08-10'
 ---
 
-## 相似点：不要求显式声明实现关系
+## 先说人话
 
-```ts
-interface Writer {
-  write(data: string): void;
-}
+<AnalogyStory
+  title="岗位只看能力，不看员工出身"
+  scene="餐厅招聘一个会切菜的人，不要求他必须在档案上写着厨师。店长、学徒或临时工，只要真的拥有规定动作，就能站到这个岗位上。"
+  mapping="Interface = 岗位能力要求；具体类型 = 实际员工；Method Set = 这个员工真正会做的动作；typed nil = 工牌写着厨师，但人没有到岗。"
+  takeaway="Go 类型无需显式声明 implements，只要方法集合满足契约就能赋给 Interface；Interface 值同时保留动态类型和动态值。"
+  boundary="Interface 更适合描述行为，不应该把所有 DTO 都改成 Interface。工牌上还有类型信息时，即使数据指针为空，整个 Interface 也不等于 nil。"
+/>
 
-const logger = {
-  write(data: string) {
-    console.log(data);
-  },
-};
+## 问题与系统不变量
+
+调用方希望依赖行为而不是具体实现，但运行时仍必须知道实际类型和数据地址，才能完成方法调用、类型断言与比较。Interface 的动态类型一旦存在，即使动态值是 nil，整个接口值也不是 nil。
+
+## 前端认知起点
+
+TypeScript 和 Go 都允许一个类型在没有显式 `implements` 的情况下满足契约。前端可迁移“面向最小能力编程”的思路；需要放弃的是“Interface 只存在编译期”和“null 判断只看数据部分”。
+
+## 最小心智模型
+
+```text
+interface value = (dynamic type, dynamic value)
+nil interface   = (nil, nil)
+typed nil       = (*MyType, nil)
 ```
+
+方法集合决定可赋值性：类型 `T` 的 Method Set 包含值接收者方法；`*T` 的 Method Set 同时包含值接收者与指针接收者方法。
+
+## Go 1.26.5 当前实现
+
+Runtime 中空接口可抽象为类型指针加数据指针，非空接口还持有与 Interface 方法表相关的 `itab`。这是理解 typed nil 的实现依据，但业务代码应依赖语言规范，不依赖字段布局。
 
 ```go
-type Writer interface {
-    Write([]byte) (int, error)
-}
+type Counter int
+
+func (c Counter) Value() int  { return int(c) }
+func (c *Counter) Increment() { (*c)++ }
 ```
 
-只要具体类型拥有匹配的方法集合，就能够满足 Go Interface，不需要写 `implements`。
+`Counter` 和 `*Counter` 都满足只要求 `Value()` 的接口；只有 `*Counter` 满足要求 `Increment()` 的接口。编译器允许对可寻址值自动取地址调用指针接收者方法，不等于 `Counter` 的 Method Set 包含该方法。
 
-## 关键差异
+## 类比成立范围
 
-- TypeScript 类型主要用于编译期检查，输出 JavaScript 后接口会被擦除。
-- Go Interface 是运行时值的一部分，包含动态类型和动态值。
-- Go 的方法接收者是值还是指针，会影响方法集合以及是否满足接口。
-- Go 更倾向于在使用方定义小接口，而不是提前设计庞大的公共接口。
+- 两者都适合在使用方定义小接口。
+- 两者都支持结构化满足关系，不要求显式声明实现。
+- Mock、Adapter 和依赖倒置的设计动机相通。
 
-## 从前端思维迁移
+## 类比失效边界
 
-不要把一个 TypeScript 大型 DTO Interface 原样搬成 Go Interface。数据结构通常应该使用 Struct；Interface 更适合描述行为边界，例如存储、发送、读取或者计费能力。
+- TypeScript Interface 编译后通常被擦除；Go Interface 是运行时值。
+- Go Interface 描述行为，DTO 数据通常应使用 Struct，而不是把每个数据结构都变成 Interface。
+- `any` 不等于 TypeScript `any`：取出动态值仍需类型断言或 Type Switch。
+- Interface 动态类型不可比较时，对两个接口做 `==` 可能 panic。
+
+## 可运行实验
+
+```bash
+cd examples/go-runtime
+go test ./labs/interfaces
+go test -bench=. -benchmem ./labs/interfaces
+```
+
+正常实验验证值与指针的 Method Set 差异。错误边界实验验证 `io.Writer` 中装入 `(*NilWriter)(nil)` 后不等于 nil。Benchmark 只展示调用路径可测，不应用单一微基准决定是否移除接口。
+
+## 真实生产故障场景
+
+Repository 实现返回 `*QueryError(nil)` 作为 `error`。上层判断 `err != nil` 成立，误走失败分支并返回 500；日志格式化时又调用了没有 nil 防护的 `Error()`，造成二次 panic。正确做法是在没有错误时直接返回裸 `nil`。
+
+## 证据与排查
+
+| 证据 | 重点 |
+| --- | --- |
+| `%T` 与 `%#v` 日志 | 同时记录动态类型和值，避免只打印 `<nil>` |
+| 编译错误 | Method Set 不满足时查看接收者是 T 还是 *T |
+| Panic 栈 | 是否在 Interface 比较、类型断言或 nil 接收者方法中失败 |
+| CPU Profile | 热路径是否出现 Interface 转换或反射成本 |
+| Escape Analysis | 装入 Interface 是否让值逃逸；只作为优化线索 |
+
+## 常见错误与版本变化
+
+- 返回 `error` 时不要先把具体错误指针设为 nil 再返回，应直接 `return nil`。
+- 编译器的自动取地址调用语法不会改变 Method Set。
+- “接受 Interface，返回 Struct”是经验法则，不是不可违反的语言规则。
+- Go 1.18 起 Interface 还用于泛型约束的 Type Set；包含类型元素的约束接口通常不能直接作为普通运行时值使用。
+- Runtime 的 `iface`/`eface` 布局不是公开 API，源码引用固定到 go1.26.5。
+
+## 完成检查表
+
+- [x] 能用“动态类型 + 动态值”解释 typed nil
+- [x] 能判断 T 与 *T 的 Method Set
+- [x] 已运行 typed nil、Method Set 与 Benchmark 实验
+- [x] 知道 Interface 比较和类型断言的 panic 边界
+- [x] 能用类型日志、编译错误、Panic 栈和 Profile 排查问题

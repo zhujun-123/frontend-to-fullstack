@@ -1,0 +1,166 @@
+---
+title: GMP 调度模型
+description: 从 Event Loop 和 Web Worker 出发，理解 Goroutine 如何在有限线程上获得执行机会，并用 Trace 定位调度问题。
+type: mapping
+maturity: verified
+summary: G 是可调度任务，M 是操作系统线程，P 持有运行 Go 代码所需的调度与分配资源；调度器通过本地队列、全局队列、Work Stealing、Netpoll 和抢占推进任务。
+firstPrinciple: 用有限的系统线程承载大量可暂停任务，在并行度、切换成本、公平性和阻塞隔离之间取得平衡。
+frontendAnalogy: Event Loop 能帮助理解任务排队，Web Worker 能帮助理解并行；但 Go 的 Goroutine 会在多个线程之间迁移，没有单一回调循环。
+lastVerified: '2026-08-10'
+testedWith:
+  - Go 1.26.5 darwin/arm64
+lab:
+  path: examples/go-runtime/labs/scheduler
+  commands:
+    - 'cd examples/go-runtime && go test ./labs/scheduler'
+    - 'cd examples/go-runtime && go test -run TestRunCPUWorkCompletesAllTasks -trace scheduler.trace ./labs/scheduler'
+    - 'cd examples/go-runtime && go test -bench=. -benchmem ./labs/scheduler'
+prerequisites:
+  - Event Loop
+  - 操作系统线程
+  - Goroutine
+related:
+  - Channel 底层原理
+  - Netpoll
+  - Go 内存分配
+sourceRefs:
+  - title: Go Runtime Source - proc.go
+    url: https://github.com/golang/go/blob/go1.26.5/src/runtime/proc.go
+    kind: project
+    publisher: Go Team
+    version: go1.26.5
+    note: 调度器、运行队列、Work Stealing 与 sysmon 的固定版本源码。
+    verifiedAt: '2026-08-10'
+  - title: Go Runtime Source - runtime2.go
+    url: https://github.com/golang/go/blob/go1.26.5/src/runtime/runtime2.go
+    kind: project
+    publisher: Go Team
+    version: go1.26.5
+    note: G、M、P 和 sudog 等核心运行时结构定义。
+    verifiedAt: '2026-08-10'
+  - title: Go Execution Tracer
+    url: https://go.dev/blog/execution-traces-2024
+    kind: official
+    publisher: Go Team
+    version: Go 1.22+
+    note: 官方 Trace 使用方法和调度延迟分析入口。
+    verifiedAt: '2026-08-10'
+  - title: Package runtime
+    url: https://pkg.go.dev/runtime
+    kind: official
+    publisher: Go Team
+    version: Go 1.26.5
+    note: GOMAXPROCS、GODEBUG 与运行时行为的公共契约。
+    verifiedAt: '2026-08-10'
+---
+
+## 先说人话
+
+<AnalogyStory
+  title="高峰期餐厅的订单、厨师和工位"
+  scene="午饭时间同时来了上千张订单，但餐厅不可能准备上千名厨师。正确做法是让有限的厨师不断从订单队列取活，并让暂时等食材、等传菜口的订单先让出位置。"
+  mapping="G = 一张待完成的订单；M = 真正炒菜的厨师；P = 厨师开火前必须占到的厨房工位。"
+  takeaway="Go 用有限的系统线程 M 执行大量 Goroutine G；M 必须绑定 P 才能运行 Go 代码，P 还带着本地任务队列和分配缓存。"
+  boundary="P 不是 CPU 核心，G 也不是 Promise。订单很多不代表厨房容量无限，下游连接、内存和调度仍然需要上限。"
+/>
+
+## 问题与系统不变量
+
+系统线程创建和切换昂贵，但服务端可能同时存在成千上万个等待网络、锁、定时器或 CPU 的任务。调度器必须始终守住三个不变量：可运行的 Goroutine 最终能获得执行机会；阻塞一个任务不应冻结同一进程的其他任务；同时执行 Go 代码的并行度受 `GOMAXPROCS` 约束。
+
+## 前端认知起点
+
+| 前端认知 | 可以迁移 | 不能照搬 |
+| --- | --- | --- |
+| Event Loop | 任务需要排队并等待执行机会 | Go 不是单线程回调循环 |
+| Web Worker | 多核可以真正并行 | Goroutine 默认共享地址空间，没有 Worker 隔离 |
+| Task / Microtask Queue | 队列影响任务何时运行 | Go 没有 Promise Microtask 的同等优先级规则 |
+
+## 最小心智模型
+
+把 G 看成待办任务，M 看成真正干活的系统线程，P 看成运行 Go 代码所需的工位。M 必须拿到 P 才能执行 Go 代码，P 保存本地运行队列和 `mcache` 等资源。
+
+<Mermaid
+  chart={`flowchart LR
+    GR[Global runnable queue] --> P1[P local run queue]
+    P1 --> M1[M OS thread]
+    M1 --> C1[CPU]
+    P2[P local run queue] -. work stealing .-> P1
+    NP[Netpoll ready list] --> P1
+    SC[Blocking syscall] -. hand off P .-> M2[Another M]`}
+/>
+
+## Go 1.26.5 当前实现
+
+1. `go fn()` 创建 G，并优先放入当前 P 的本地运行队列。
+2. M 持有 P，从本地队列取 G；必要时检查全局队列、Netpoll，或从其他 P 偷取一部分任务。
+3. G 在 Channel、Mutex、网络 I/O 等位置等待时会被挂起，M 可以继续运行其他 G。
+4. M 进入长时间系统调用时，P 可以与它分离并交给另一个 M，避免 P 上的任务一起停住。
+5. `sysmon` 等运行时机制参与网络轮询、系统调用监控和抢占。函数调用安全点与异步抢占共同避免纯计算任务长期独占执行资源。
+
+本地队列减少所有任务争抢一个中央锁，Work Stealing 用来处理 P 之间的负载不均。具体取队列顺序属于实现细节，不能依赖它保证业务先后顺序。
+
+## 类比成立范围
+
+- Event Loop 和 GMP 都要回答“当前不能执行的任务放在哪里、何时继续”。
+- Web Worker 和多个 P 都能帮助理解多核并行。
+- 浏览器 Performance Timeline 与 Go Trace 都能展示任务执行、等待和唤醒。
+
+## 类比失效边界
+
+- P 不是 CPU，也不是线程；它是运行 Go 代码所需的一组逻辑资源。
+- Goroutine 不是 Promise。G 只有执行状态，没有内置结果、错误和取消。
+- Goroutine 可以在线程之间迁移，因此不能用线程局部认知推断它下一次在哪里运行。
+- 调度公平不等于业务顺序。需要顺序时应显式使用队列、锁或协议。
+
+## 可运行实验
+
+```bash
+cd examples/go-runtime
+go test ./labs/scheduler
+go test -run TestRunCPUWorkCompletesAllTasks -trace scheduler.trace ./labs/scheduler
+go tool trace scheduler.trace
+go test -bench=. -benchmem ./labs/scheduler
+```
+
+正常现象：测试能在 `GOMAXPROCS=2` 下完成全部有界任务；Trace 能看到多个 Goroutine 的创建、运行和等待。错误边界：不要断言某个 Goroutine 必须先运行，调度顺序本身不稳定。
+
+也可以启动实验服务后制造有限 CPU 工作：
+
+```bash
+go run ./cmd/labserver
+curl 'http://127.0.0.1:8080/work/cpu?tasks=32&iterations=1000000'
+```
+
+## 真实生产故障场景
+
+一个接口为每条数据无上限启动 Goroutine，下游连接池只有 50 个连接。请求量上升后，大量 G 堆积在连接获取和 Channel 发送上，内存上涨、P99 延迟恶化，CPU 却不一定满。根因不是“GMP 太慢”，而是并发没有与下游容量对齐。
+
+## 证据与排查
+
+| 证据 | 看什么 | 能回答什么 |
+| --- | --- | --- |
+| `go tool trace` | Goroutine 状态、调度延迟、阻塞位置 | 时间花在运行、等待还是调度 |
+| Goroutine Profile | 相同栈大量重复、创建来源 | 是否泄漏或无上限扇出 |
+| Block / Mutex Profile | Channel、锁等待热点 | 哪个同步点在排队 |
+| `/sched/goroutines:goroutines` | Goroutine 总量趋势 | 是否持续增长不回落 |
+| `/sched/latencies:seconds` | 可运行到获得 CPU 的延迟分布 | 是否存在调度压力 |
+| CPU Profile | 热函数与 Runtime 占比 | 是业务计算、锁竞争还是调度开销 |
+
+先把业务请求时间线与 Profile 时间窗对齐，再解释 Runtime 指标；单看 Goroutine 数量不能证明泄漏。
+
+## 常见错误与版本变化
+
+- `GOMAXPROCS` 限制同时执行 Go 代码的 P 数量，不限制 Goroutine 数量。
+- `runtime.NumGoroutine()` 只有总数，没有创建栈和等待原因。
+- Go 1.22 起，`for` 循环变量按每次迭代重新创建，并支持对整数 `range`；旧版闭包捕获结论要标注版本。
+- Go 1.25 新增 `WaitGroup.Go`，减少 `Add` 与 `go` 顺序写错的机会，但它仍不传播返回值或错误。
+- Goroutine 很轻不等于免费；栈、引用对象、连接、日志和调度都需要预算。
+
+## 完成检查表
+
+- [x] 能区分 G、M、P 与 CPU 核心
+- [x] 能解释本地队列、全局队列和 Work Stealing 的目的
+- [x] 已运行单元测试、Benchmark 与 Trace 入口
+- [x] 知道调度顺序不能作为稳定断言
+- [x] 能用 Trace、Goroutine、Block 和 CPU Profile 形成证据链

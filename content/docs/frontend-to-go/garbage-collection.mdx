@@ -1,0 +1,152 @@
+---
+title: Go GC 原理
+description: 从 V8 GC 和前端卡顿出发，理解 Go 并发标记清扫、写屏障、Mark Assist、GOGC 与内存限制。
+type: mapping
+maturity: verified
+summary: Go 1.26.5 使用并发、非分代、非移动的追踪式标记清扫 GC；Pacer 根据活跃堆、Roots 和分配速度安排工作，在 CPU、延迟与内存之间取舍。
+firstPrinciple: 当业务仍在分配和改写指针时，准确找出所有可达对象，并确保回收速度能跟上分配速度而不过度抢占业务资源。
+frontendAnalogy: V8 GC 的可达性、暂停和堆快照认知可以迁移；新生代、老生代与 Minor GC 不能直接套到 Go 当前 GC。
+lastVerified: '2026-08-10'
+testedWith:
+  - Go 1.26.5 darwin/arm64
+lab:
+  path: examples/go-runtime/labs/gc
+  commands:
+    - 'cd examples/go-runtime && go test ./labs/gc'
+    - 'cd examples/go-runtime && go test -bench=. -benchmem ./labs/gc'
+    - 'cd examples/go-runtime && GODEBUG=gctrace=1 go test -run TestSnapshotAndCollection ./labs/gc'
+prerequisites:
+  - 可达性与 Roots
+  - Go 堆内存
+  - Goroutine
+related:
+  - Go 内存分配
+  - pprof
+  - runtime/metrics
+sourceRefs:
+  - title: A Guide to the Go Garbage Collector
+    url: https://go.dev/doc/gc-guide
+    kind: official
+    publisher: Go Team
+    version: Go 1.26
+    note: GC 成本模型、GOGC、内存限制和延迟吞吐取舍的官方说明。
+    verifiedAt: '2026-08-10'
+  - title: Go Runtime Source - mgc.go
+    url: https://github.com/golang/go/blob/go1.26.5/src/runtime/mgc.go
+    kind: project
+    publisher: Go Team
+    version: go1.26.5
+    note: GC 阶段、并发标记、终止与清扫协调的固定版本源码。
+    verifiedAt: '2026-08-10'
+  - title: Package runtime/metrics
+    url: https://pkg.go.dev/runtime/metrics
+    kind: official
+    publisher: Go Team
+    version: Go 1.26.5
+    note: Heap、GC CPU、暂停和调度等稳定指标名称。
+    verifiedAt: '2026-08-10'
+  - title: Package runtime - AddCleanup
+    url: https://pkg.go.dev/runtime#AddCleanup
+    kind: official
+    publisher: Go Team
+    version: Go 1.24+
+    note: 清理器的公共 API、适用范围和非确定执行边界。
+    verifiedAt: '2026-08-10'
+---
+
+## 先说人话
+
+<AnalogyStory
+  title="餐厅清洁员不能见盘子就收"
+  scene="清洁员先从正在用餐的桌子、服务台和后厨出发，沿着谁还拿着什么，把仍在使用的餐具做上标记。最后没有被任何使用链路找到的餐具，才可以收走清洗。"
+  mapping="Roots = 正在营业的桌子和工作区；可达对象 = 仍有人使用的餐具；写屏障 = 移动餐具时通知清洁员；Mark Assist = 制造脏盘子的人也来帮忙整理。"
+  takeaway="Go GC 从 Roots 并发追踪可达对象，并用写屏障维持对象图正确；分配过快时业务 Goroutine 还需要协助标记。"
+  boundary="并发清洁不代表完全不停业，也不代表免费。GC 仍然有短暂 STW，并会消耗 CPU、内存带宽和业务延迟预算。"
+/>
+
+## 问题与系统不变量
+
+只要对象仍能从全局变量、Goroutine 栈和其他 Roots 沿指针到达，它就不能被回收。并发标记期间业务还在改写对象图，因此 GC 必须借助写屏障保持可达性判断正确；同时回收速度要跟上分配速度，否则堆会持续增长。
+
+## 前端认知起点
+
+前端对“从 Roots 追踪可达对象”“长任务和 GC 暂停会影响交互”“Retainer 导致对象无法释放”已有直觉。Go 的差异是服务端更关注持续吞吐、容器内存限制、多个 Goroutine 栈和 GC 与业务并发争用 CPU。
+
+## 最小心智模型
+
+三色只是推理模型：白色尚未证明存活，灰色已知存活但引用未扫描完，黑色已扫描完成。并发标记将可达对象从白色推进到灰色和黑色；结束后仍为白色的对象才可清扫复用。
+
+<Mermaid
+  chart={`flowchart LR
+    R[Roots] --> G[Gray work]
+    G --> B[Black scanned objects]
+    G --> N[New reachable objects]
+    N --> G
+    W[White unreachable objects] --> S[Sweep and reuse]
+    M[Mutator pointer writes] --> WB[Write barrier]
+    WB --> G`}
+/>
+
+## Go 1.26.5 当前实现
+
+一轮 GC 大致包含：短暂 STW 开启标记和写屏障；并发标记由专用 GC Worker 与 Mark Assist 推进；短暂 STW 完成 Mark Termination；随后清扫不可达对象所在 Span。Go 当前主要 GC 是并发、非分代、非移动的追踪式标记清扫。
+
+Pacer 以活跃堆、Roots 和分配速率估算下一轮目标与需要投入的标记工作。`GOGC` 调整堆增长目标，`GOMEMLIMIT` 或 `debug.SetMemoryLimit` 提供包含 Runtime 管理内存的软限制。限制过紧时 GC 会更频繁并消耗 CPU，但软限制仍可能为了避免 GC 抖动而被短暂超过。
+
+## 类比成立范围
+
+- V8 与 Go 都从 Roots 判断可达性。
+- Chrome Heap Snapshot 与 Go Heap Profile 都能找持有路径和热点。
+- 浏览器卡顿分析与服务端 P99 分析都需要把 GC 时间窗和业务延迟对齐。
+
+## 类比失效边界
+
+- Go 当前主要 GC 不按 V8 新生代、老生代执行 Minor/Major GC。
+- “并发 GC”不代表没有 STW，也不代表没有 CPU 和内存带宽成本。
+- 触发 `runtime.GC()` 不保证 RSS 立即下降；内存可能留给 Runtime 复用。
+- Finalizer 或 Cleanup 不提供确定执行时间，不能承担数据库提交、解锁等正确性责任。
+
+## 可运行实验
+
+```bash
+cd examples/go-runtime
+go test ./labs/gc
+GODEBUG=gctrace=1 go test -run TestSnapshotAndCollection ./labs/gc
+go test -bench=. -benchmem ./labs/gc
+```
+
+正常现象：测试显式触发 GC 后 `NumGC` 增加。`gctrace` 的暂停、CPU 和 Heap 数值会随机器与负载变化，只观察字段和趋势，不断言固定暂停时间。错误边界：一次测试中 `HeapAlloc` 未立即下降不能单独证明泄漏。
+
+## 真实生产故障场景
+
+服务为了降低延迟把 `GOGC` 调得很高，同时容器内存 Limit 没有设置 `GOMEMLIMIT`。流量峰值时活跃对象与临时对象一起推高 Heap，容器先被 OOM Kill。另一个极端是把内存限制设得接近稳定活跃堆，GC 几乎连续运行，CPU 满而吞吐下降。
+
+## 证据与排查
+
+| 证据 | 重点 |
+| --- | --- |
+| `/gc/heap/live:bytes` | 上轮标记结束后的活跃堆趋势 |
+| `/gc/heap/goal:bytes` | 下一轮目标是否被 GOGC 或内存限制压紧 |
+| `/gc/pauses:seconds` | 暂停分布，不只看平均值 |
+| `/cpu/classes/gc/total:cpu-seconds` | GC 实际消耗的 CPU 时间 |
+| Heap Profile | `inuse_space` 看存活，`alloc_space` 看分配速率 |
+| `gctrace` / Trace | GC 周期、Mark Assist、业务延迟的时间关系 |
+| 容器 RSS 与 OOM 事件 | 是否是堆外、栈、页保留或真实内存限制问题 |
+
+先比较 Live Heap、分配速率和内存 Limit，再决定调 `GOGC`、优化分配还是修复持有关系。
+
+## 常见错误与版本变化
+
+- `GOGC=100` 不是“GC 使用 100% CPU”，而是参与计算下一轮堆目标。
+- `GOMEMLIMIT` 是软限制，不是容器 OOM 的硬防线，仍需留出非 Go 内存与系统余量。
+- Go 1.24 引入 `runtime.AddCleanup`，比 Finalizer 更适合附加清理动作，但仍不保证进程退出前执行。
+- 不要用 `runtime.GC()` 和 `debug.FreeOSMemory()` 掩盖持续分配或持有问题。
+- GC 暂停时间、周期和调度顺序不稳定，测试只能断言结构性事实和趋势。
+
+## 完成检查表
+
+- [x] 能解释 Roots、三色模型、写屏障和 Mark Assist
+- [x] 能区分 GOGC、GOMEMLIMIT 与容器硬限制
+- [x] 已运行 GC 测试、gctrace 和 Benchmark
+- [x] 不用固定暂停时间作为断言
+- [x] 能结合 Live Heap、Profile、GC CPU 与 OOM 事件定位问题

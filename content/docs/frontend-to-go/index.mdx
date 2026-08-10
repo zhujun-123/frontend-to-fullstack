@@ -1,36 +1,83 @@
 ---
 title: 前端原理映射 Go 原理
-description: 从熟悉的 JavaScript、TypeScript 和浏览器概念，迁移到 Go 的语言与运行时模型。
+description: 从熟悉的 JavaScript、TypeScript 和浏览器概念，迁移到 Go 的语言、运行时与生产排查模型。
 type: overview
-summary: 类比用于降低理解成本，但每个类比都必须同时说明成立范围和失效边界。
+maturity: reviewed
+summary: 类比只负责降低理解成本；可运行实验、版本边界和生产证据负责证明结论。
 related:
   - 全栈学习路线
   - Go 并发模型
 ---
 
-## 映射不是翻译
+## 这不是 43 张名词卡片
 
-“Promise 对应 Goroutine”只说对了一小部分。它们都能参与并发任务，但 Promise 表示未来结果，Goroutine 表示一个正在独立执行的函数。真正完整的映射还需要 Channel、WaitGroup、errgroup 和 Context。
+知识库把内容完成度拆成三层：
 
-因此，每个专题都使用三种关系标记：
+| 成熟度 | 交付标准 |
+| --- | --- |
+| 已验证 | 官方来源、Go 1.26.5 当前实现、可运行 Lab、生产场景和排查证据齐全 |
+| 已校对 | 解释完整并已用官方资料校对，但还没有独立实验体系 |
+| 概念索引 · 尚未验证 | 只帮助发现学习方向，不伪装成已完成文档 |
+
+当前包含 **10 篇已验证专题、6 篇已校对专题和 43 条概念映射**。社区文章和高 Star 仓库只用于发现高频问题，机制结论回到 Go 规范、官方文档和固定版本源码核验。
+
+## 一套餐厅故事贯穿 Runtime
+
+为了避免从一个技术术语直接跳到另一个术语，10 篇已验证专题增加了统一的餐厅故事层：
+
+| 餐厅角色 | Go 概念 | 先记住什么 |
+| --- | --- | --- |
+| 订单、厨师、工位 | G、M、P | 订单很多，真正执行的人和工位有限 |
+| 传菜口与托盘位 | Channel 与 Buffer | 能暂存不等于不会堵 |
+| 多个取餐铃 | select | 一次选一个，其他任务不会自动取消 |
+| 仓库钥匙与计数器 | Mutex 与 Atomic | 多步不变量和单点更新不是一回事 |
+| 取餐震动器 | Netpoll | 等待网络时不必占住系统线程 |
+| 工作台与总仓库 | Stack 与 Heap | 生命周期决定东西放在哪里 |
+| 清洁员与餐具 | GC | 仍有人使用的对象不能回收 |
+| 八格订单抽屉 | Swiss Table Group | 先批量筛选候选，再核对真实 Key |
+| 岗位能力要求 | Interface 与 Method Set | 会规定动作就能满足契约 |
+| 下班清单与火警 | defer、panic、recover | 清理、异常和隔离是三件事 |
+
+每个故事都会紧跟“换回技术语言”和“类比到这里为止”。比喻负责建立直觉，规范、固定版本源码和实验仍然负责证明结论。
+
+## 10 篇已验证专题
+
+建议按“任务如何运行 → 如何等待和通信 → 如何共享状态 → 内存如何管理 → 语言边界”的顺序学习。
+
+| 专题 | 要解决的底层问题 | 实验证据 |
+| --- | --- | --- |
+| [GMP 调度模型](/docs/frontend-to-go/gmp-scheduler) | 大量 Goroutine 如何运行在有限线程上 | Test、Benchmark、Trace |
+| [Netpoll、epoll/kqueue 与 Event Loop](/docs/frontend-to-go/netpoll-vs-event-loop) | 网络等待如何不长期占住系统线程 | TCP、取消、Race |
+| [Channel 底层原理](/docs/frontend-to-go/channel-internals) | 通信、背压、关闭和等待队列如何协作 | Pipeline、取消、Race |
+| [select 底层原理](/docs/frontend-to-go/select-internals) | 多个通信操作如何只选择一次 | 就绪、关闭、取消 |
+| [Mutex、Atomic 与 Memory Model](/docs/frontend-to-go/mutex-atomic-memory-model) | 真实并行下如何保持可见性和不变量 | 并发计数、Race、竞争基准 |
+| [Go 内存分配](/docs/frontend-to-go/memory-allocation) | 对象放哪里，如何低成本分配 | 逃逸分析、allocs/op |
+| [Go GC 原理](/docs/frontend-to-go/garbage-collection) | 如何并发找出并回收不可达对象 | gctrace、MemStats、Benchmark |
+| [Go Map 与 Swiss Table](/docs/frontend-to-go/map-swiss-table) | 冲突、查找、增长和迭代如何实现 | comma-ok、nil Map、Benchmark |
+| [Interface、Method Set 与 typed nil](/docs/frontend-to-go/typescript-interface-vs-go-interface) | 行为契约如何参与运行时调用 | Method Set、typed nil |
+| [defer、panic 与 recover](/docs/frontend-to-go/defer-panic-recover) | 所有退出路径如何清理并隔离崩溃 | LIFO、命名返回值、recover |
+
+## 6 篇已校对专题
+
+- [Array 与 Slice](/docs/frontend-to-go/array-vs-slice)
+- [Event Loop 与 Go Scheduler](/docs/frontend-to-go/event-loop-vs-scheduler)
+- [Promise 与 Goroutine](/docs/frontend-to-go/promise-vs-goroutine)
+- [AbortController 与 Context](/docs/frontend-to-go/abort-controller-vs-context)
+- [Fetch 与 http.Client](/docs/frontend-to-go/fetch-vs-http-client)
+- [try/catch 与 Go error](/docs/frontend-to-go/error-model)
+
+“已校对”不代表内容错误，而是明确告诉读者：它还缺少独立 Lab 和完整生产验证入口。
+
+## 类比关系怎么读
 
 | 关系 | 含义 |
 | --- | --- |
-| 同一抽象 | 解决的问题基本一致，可以直接迁移已有认知 |
-| 部分类比 | 能帮助入门，但运行机制或者约束不同 |
+| 同一抽象 | 解决的问题基本一致，可以迁移已有认知 |
+| 部分类比 | 适合建立入口，但实现和约束不同 |
 | 危险类比 | 表面相似，直接照搬会产生错误设计 |
-
-## 首批专题
-
-| 专题 | 主要问题 |
-| --- | --- |
-| [Event Loop 与 Go Scheduler](/docs/frontend-to-go/event-loop-vs-scheduler) | 同样涉及任务调度，运行模型为什么不同？ |
-| [Promise 与 Goroutine](/docs/frontend-to-go/promise-vs-goroutine) | 任务、结果、通信和取消分别由谁负责？ |
-| [TypeScript Interface 与 Go Interface](/docs/frontend-to-go/typescript-interface-vs-go-interface) | 结构化类型在编译期和运行时有哪些差异？ |
-| [try/catch 与 Go error](/docs/frontend-to-go/error-model) | 如何从异常捕获转向显式错误流？ |
 
 ## 映射浏览器
 
-可以按分类、关键词和类比关系筛选全部 30 条映射。点击“标记为已理解”后，学习进度会保存在当前浏览器中。
+可以按分类、类比关系和成熟度筛选全部 43 条映射。已验证内容优先展示；没有专题的卡片会明确显示“概念索引 · 尚未验证”。学习进度保存在当前浏览器中。
 
 <MappingExplorer />

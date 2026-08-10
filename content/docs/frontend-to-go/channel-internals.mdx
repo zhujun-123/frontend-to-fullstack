@@ -1,0 +1,163 @@
+---
+title: Channel 底层原理
+description: 从消息队列和 MessageChannel 出发，理解 Channel 的缓冲、等待队列、关闭、取消与生产阻塞证据。
+type: mapping
+maturity: verified
+summary: Channel 是带类型和同步语义的进程内通信原语；发送与接收可能直接交接、经过环形缓冲区，或把 Goroutine 挂入等待队列。
+firstPrinciple: 在并发任务间安全传递所有权或事件，并明确容量、背压、关闭和取消责任。
+frontendAnalogy: MessageChannel 和异步队列能帮助理解生产者消费者，但 Go Channel 会阻塞、参与 happens-before，也不是持久化消息队列。
+lastVerified: '2026-08-10'
+testedWith:
+  - Go 1.26.5 darwin/arm64
+lab:
+  path: examples/go-runtime/labs/channel
+  commands:
+    - 'cd examples/go-runtime && go test ./labs/channel'
+    - 'cd examples/go-runtime && go test -race ./labs/channel'
+    - 'cd examples/go-runtime && go test -bench=. -benchmem ./labs/channel'
+prerequisites:
+  - Goroutine
+  - Context
+  - 生产者消费者模型
+related:
+  - GMP 调度模型
+  - select 底层原理
+  - Go Memory Model
+sourceRefs:
+  - title: Go Runtime Source - chan.go
+    url: https://github.com/golang/go/blob/go1.26.5/src/runtime/chan.go
+    kind: project
+    publisher: Go Team
+    version: go1.26.5
+    note: hchan、等待队列、发送、接收和关闭的固定版本源码。
+    verifiedAt: '2026-08-10'
+  - title: Go Runtime Source - runtime2.go
+    url: https://github.com/golang/go/blob/go1.26.5/src/runtime/runtime2.go
+    kind: project
+    publisher: Go Team
+    version: go1.26.5
+    note: sudog 等阻塞 Goroutine 等待节点的定义。
+    verifiedAt: '2026-08-10'
+  - title: The Go Programming Language Specification - Channel types
+    url: https://go.dev/ref/spec#Channel_types
+    kind: specification
+    publisher: Go Team
+    version: Go 1.26
+    note: Channel 类型、发送、接收、关闭与 range 的语言级契约。
+    verifiedAt: '2026-08-10'
+  - title: Go 1.23 Release Notes - Timer changes
+    url: https://go.dev/doc/go1.23#timer-changes
+    kind: official
+    publisher: Go Team
+    version: Go 1.23
+    note: Timer Channel 对外同步语义与可回收行为的版本变化。
+    verifiedAt: '2026-08-10'
+---
+
+## 先说人话
+
+<AnalogyStory
+  title="后厨和前厅之间的传菜口"
+  scene="厨师做好菜后，不直接跑到前厅找服务员，而是放到传菜口。没有托盘位的窗口必须双方同时到场；有三个托盘位的传菜台可以暂存三份，放满后厨师仍然要停下来等。"
+  mapping="发送方 = 后厨；接收方 = 前厅；Channel = 传菜口；Buffer = 可以暂放菜品的托盘位。"
+  takeaway="Channel 通过直接交接、环形缓冲区或等待队列协调 Goroutine，并用阻塞形成背压。"
+  boundary="Channel 不是持久化消息队列，也不是广播系统。增加 Buffer 只是在传菜台上多放托盘，不能解决生产速度长期高于消费速度。"
+/>
+
+## 问题与系统不变量
+
+并发任务需要交换数据，但共享内存直接读写容易产生数据竞争。Channel 必须保证元素不被凭空复制或丢失、关闭状态可被观察、等待者能被唤醒，并且发送接收建立 Go Memory Model 定义的同步关系。
+
+## 前端认知起点
+
+前端常见的 MessageChannel、事件队列和 Stream 都有生产者消费者影子。可迁移的是“生产速度和消费速度需要协调”；不能迁移的是“发送永不阻塞”以及“关闭只是移除监听器”。
+
+## 最小心智模型
+
+Channel 有三条主要路径：
+
+1. 已有接收者等待：发送方把值直接交给接收方。
+2. 有缓冲且未满：值进入环形缓冲区。
+3. 无接收者且缓冲已满：发送方以 `sudog` 节点进入发送等待队列并挂起。
+
+<Mermaid
+  chart={`flowchart LR
+    S[Sender] --> D{Receiver waiting?}
+    D -- yes --> H[Direct handoff]
+    D -- no --> B{Buffer has room?}
+    B -- yes --> Q[Ring buffer]
+    B -- no --> W[sendq and park G]
+    R[Receiver] --> E{Buffered value?}
+    E -- yes --> Q
+    E -- no --> RW[recvq and park G]`}
+/>
+
+## Go 1.26.5 当前实现
+
+`runtime.hchan` 保存元素数量 `qcount`、容量 `dataqsiz`、缓冲区指针 `buf`、发送/接收索引、`sendq`、`recvq`、关闭标记和锁。缓冲 Channel 使用环形队列；等待发送或接收的 G 通过 `sudog` 挂接在队列上。
+
+Runtime 源码维护的重要不变量包括：通常 `sendq` 与 `recvq` 至少一个为空；缓冲区有数据时不应还有接收等待者，缓冲区未满时不应还有发送等待者。锁保护 `hchan` 字段和相关等待节点，但 Runtime 不会在持锁时直接切换另一个 G 的状态，以避免与栈收缩死锁。
+
+关闭 Channel 会唤醒等待者：接收方在缓冲耗尽后得到元素零值和 `ok=false`，发送方则因向已关闭 Channel 发送而 panic。
+
+## 类比成立范围
+
+- 都能把生产者与消费者解耦。
+- 缓冲容量都能吸收短时速率差。
+- 取消订阅和 Context 取消都提醒我们管理生命周期。
+
+## 类比失效边界
+
+- Channel 不是 Kafka、Redis Stream 或持久化队列；进程退出后数据消失。
+- Channel 默认不是广播。一个值通常只会被一个接收者取走。
+- 缓冲区不是吞吐魔法，只是改变阻塞发生的位置。
+- 关闭是发送方的责任；接收方随意关闭会与其他发送者竞态。
+- `nil` Channel 的发送和接收永久阻塞，可用于动态禁用 `select` 分支，但误用会泄漏。
+
+## 可运行实验
+
+```bash
+cd examples/go-runtime
+go test ./labs/channel
+go test -race ./labs/channel
+go test -bench=. -benchmem ./labs/channel
+```
+
+正常实验验证有界 Pipeline 会按顺序输出平方值并由唯一发送者关闭输出。错误边界实验在 Context 取消后确认 Pipeline 能结束；如果某一级发送没有同时监听 `ctx.Done()`，消费者提前退出时就可能留下永久阻塞的 G。
+
+```bash
+go run ./cmd/labserver
+curl 'http://127.0.0.1:8080/work/pipeline?count=8&buffer=2'
+```
+
+## 真实生产故障场景
+
+请求处理启动三个 Pipeline 阶段，客户端断开后最后一级停止接收，但上游仍向无缓冲 Channel 发送。请求日志已经结束，Goroutine 数量却持续上涨；数小时后内存和调度延迟一起恶化。
+
+## 证据与排查
+
+| 证据 | 重点 |
+| --- | --- |
+| Goroutine Dump | `chan send`、`chan receive` 栈是否大量重复，创建者在哪里 |
+| Block Profile | 哪个 Channel 操作累计阻塞时间最高 |
+| Trace | 哪些 G 被阻塞、由谁唤醒、Context 取消后是否退出 |
+| 指标 | 队列长度、生产/消费速率、丢弃数、Goroutine 数 |
+| 日志 | 任务 ID、入队、出队、关闭、取消原因；不要记录每个元素造成日志风暴 |
+
+排查时先确认 Channel 的所有者：谁创建、谁发送、谁关闭、消费者何时停止。没有这四个答案，单纯增大 Buffer 通常只是延后故障。
+
+## 常见错误与版本变化
+
+- 向已关闭 Channel 发送会 panic；从已关闭且已排空 Channel 接收立即返回零值和 `ok=false`。
+- `for value := range ch` 只有在 Channel 关闭后才结束。
+- 多个发送者存在时，通常由协调者在所有发送者结束后统一关闭。
+- Go 1.23 起 Timer Channel 对外表现为同步 Channel，`cap` 和 `len` 为 0，并保证 `Stop`/`Reset` 后不再收到旧值；Runtime 内部缓冲属于实现细节。
+- 不要通过 `len(ch)` 做并发正确性判断，读取后状态就可能变化。
+
+## 完成检查表
+
+- [x] 能解释直接交接、缓冲和等待队列三条路径
+- [x] 能说清发送方、接收方与关闭责任
+- [x] 已运行正常、取消、Race 与 Benchmark 实验
+- [x] 知道 `nil`、关闭和缓冲满时的边界
+- [x] 能用 Goroutine、Block Profile、Trace 和业务队列指标定位阻塞

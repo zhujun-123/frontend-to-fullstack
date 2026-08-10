@@ -1,0 +1,145 @@
+---
+title: Mutex、Atomic 与 Go Memory Model
+description: 从前端共享 Store 出发，理解真实并行下的数据竞争、happens-before、Mutex、Atomic 与证据化排查。
+type: mapping
+maturity: verified
+summary: Go Memory Model 定义跨 Goroutine 的可见性；Mutex 保护多步不变量，Atomic 适合独立机器字或不可变快照发布，二者都不能只靠“看起来不会同时执行”替代。
+firstPrinciple: 多个执行单元共享内存时，必须建立明确同步关系，让读操作看到被允许看到的写，并保持跨字段业务不变量。
+frontendAnalogy: Redux 的单向数据流和不可变更新能帮助减少状态混乱；服务端存在真实并行，编码习惯本身不建立 happens-before。
+lastVerified: '2026-08-10'
+testedWith:
+  - Go 1.26.5 darwin/arm64
+lab:
+  path: examples/go-runtime/labs/synclab
+  commands:
+    - 'cd examples/go-runtime && go test ./labs/synclab'
+    - 'cd examples/go-runtime && go test -race ./labs/synclab'
+    - 'cd examples/go-runtime && go test -bench=. -benchmem ./labs/synclab'
+prerequisites:
+  - JavaScript 共享状态
+  - Goroutine
+  - CPU Cache 基础
+related:
+  - Go Map 与 Swiss Table
+  - Channel 底层原理
+  - Race Detector
+sourceRefs:
+  - title: The Go Memory Model
+    url: https://go.dev/ref/mem
+    kind: specification
+    publisher: Go Team
+    version: Go 1.26
+    note: happens-before、同步操作与无数据竞争程序的语义保证。
+    verifiedAt: '2026-08-10'
+  - title: Package sync
+    url: https://pkg.go.dev/sync
+    kind: official
+    publisher: Go Team
+    version: Go 1.26.5
+    note: Mutex、RWMutex、Once、WaitGroup 与 Pool 的公共契约。
+    verifiedAt: '2026-08-10'
+  - title: Package sync/atomic
+    url: https://pkg.go.dev/sync/atomic
+    kind: official
+    publisher: Go Team
+    version: Go 1.26.5
+    note: 顺序一致 Atomic 操作和类型化原子值 API。
+    verifiedAt: '2026-08-10'
+  - title: Go Source - internal/sync/mutex.go
+    url: https://github.com/golang/go/blob/go1.26.5/src/internal/sync/mutex.go
+    kind: project
+    publisher: Go Team
+    version: go1.26.5
+    note: Mutex 快慢路径、主动自旋、信号量和饥饿模式的固定版本实现。
+    verifiedAt: '2026-08-10'
+---
+
+## 先说人话
+
+<AnalogyStory
+  title="仓库唯一的钥匙与门口计数器"
+  scene="修改仓库里的库存、批次和货架位置时，需要先拿到唯一钥匙，保证整套记录一起更新。门口只统计进店人数时，则可以使用一个每按一次只加一的计数器，不必锁住整间仓库。"
+  mapping="Mutex = 仓库唯一钥匙；临界区 = 拿钥匙后才能修改的区域；Atomic = 只操作一个数字或指针的计数器；happens-before = 交还钥匙后下一位看到完整更新。"
+  takeaway="Mutex 保护多步业务不变量，Atomic 适合独立机器字或不可变快照发布；同步操作建立跨 Goroutine 的可见性。"
+  boundary="Atomic 只能保证这一下操作完整，不能自动保证库存减少和流水追加同时成功。前端不可变更新习惯也不能代替服务端真实并行下的同步。"
+/>
+
+## 问题与系统不变量
+
+两个 Goroutine 同时访问同一变量，只要至少一个是写且没有同步，就存在数据竞争。CPU、编译器和 Runtime 都可以在规范允许范围内重排或缓存操作；“本地测试总是先写后读”不是可见性保证。
+
+## 前端认知起点
+
+前端单线程主执行环境让很多共享 Store 更新天然串行，Web Worker 又通常通过消息复制隔离。Go Handler、后台任务和定时器可能在不同系统线程上同时访问同一对象，因此不可变风格只能改善设计，不能替代锁、Channel 或 Atomic 发布。
+
+## 最小心智模型
+
+先确定共享状态的不变量，再选同步原语：
+
+| 状态形态 | 优先选择 | 原因 |
+| --- | --- | --- |
+| 多字段必须一起变化 | Mutex | 临界区内原子地维护业务不变量 |
+| 单调计数、标志、单个指针 | Atomic | 无锁读写一个独立状态 |
+| 不可变配置整体替换 | `atomic.Pointer[T]` | 构建新快照后一次发布 |
+| 所有权随消息转移 | Channel | 让单一 Goroutine 维护状态 |
+
+## Go 1.26.5 当前实现
+
+`sync.Mutex` 公共类型封装 `internal/sync.Mutex`。无竞争时通过 CAS 走快速路径；竞争时可能短暂自旋，随后借助 Runtime 信号量挂起等待者。正常模式追求吞吐，等待超过阈值的场景可进入饥饿模式，把所有权直接交给队首等待者以控制尾延迟。
+
+Memory Model 保证一次 `Unlock` 同步先于之后成功的 `Lock`；类型化 Atomic 操作按顺序一致语义参与全局顺序。Atomic 只保证该次原子操作，不自动保护“余额减少 + 流水追加”这类多字段事务。
+
+## 类比成立范围
+
+- 不可变快照适合读多写少的配置发布。
+- Redux Reducer 的“先定义状态转换”有助于缩小锁内逻辑。
+- Web Worker 消息所有权与 Channel Owner 模式都减少共享写。
+
+## 类比失效边界
+
+- JavaScript 主线程上的顺序执行不能迁移成 Go 的并发安全保证。
+- Atomic Counter 不能推广为任意无锁数据结构。
+- `RWMutex` 不是读多就必然更快，读临界区长度和写竞争决定结果。
+- Channel 也不是所有共享状态问题的答案；强行把简单计数变成专用 Goroutine 会增加生命周期和排队成本。
+
+## 可运行实验
+
+```bash
+cd examples/go-runtime
+go test ./labs/synclab
+go test -race ./labs/synclab
+go test -bench=. -benchmem ./labs/synclab
+```
+
+正常实验让 16 个 Goroutine 同时累加，Mutex 与 Atomic 都保持最终计数。Benchmark 只比较当前机器竞争模式下的趋势，不能得出“Atomic 永远更快”。错误边界可临时把计数改成普通 `value++` 再运行 Race Detector，观察两条冲突调用栈；不要把故意 Race 代码保留在默认测试。
+
+## 真实生产故障场景
+
+限流器用普通 Map 保存租户计数，一个 Goroutine 定期重置，Handler 同时递增。Race 导致计数丢失，偶尔还触发并发 Map Fatal。换成 Atomic 只能保护单个计数，如果“当前窗口 + 计数 + 过期时间”必须一致，仍需要 Mutex 或不可变窗口快照。
+
+## 证据与排查
+
+| 证据 | 重点 |
+| --- | --- |
+| `go test -race` | 冲突读写栈、Goroutine 创建栈 |
+| Mutex Profile | 累计等待时间最高的锁 |
+| Block Profile | 锁、Channel、Cond 等阻塞位置 |
+| Trace | 锁等待与调度、下游延迟的时间关系 |
+| Goroutine Dump | 大量 G 是否卡在同一 `Lock` |
+| 业务日志/指标 | 临界区 Key、队列深度、冲突率；不要在持锁时慢日志 |
+
+## 常见错误与版本变化
+
+- Mutex 零值可用，但首次使用后不能复制；`go vet` 的 copylocks 检查有价值。
+- 锁内调用未知回调、网络、日志或阻塞 Channel 容易放大尾延迟和死锁风险。
+- Atomic 发布指针前必须先完整构造不可变对象，发布后不能再无锁修改其字段。
+- 失败的 `TryLock` 不建立 happens-before，循环 TryLock 也可能变成忙等。
+- Go 1.25 新增 `WaitGroup.Go`，减少 `Add` 与启动 Goroutine 的时序错误；WaitGroup 仍不是错误收集或取消工具。
+
+## 完成检查表
+
+- [x] 能定义数据竞争与 happens-before
+- [x] 能按不变量选择 Mutex、Atomic、Channel 或快照
+- [x] 已运行并发测试、Race 与竞争 Benchmark
+- [x] 不用 Atomic 保护跨字段事务
+- [x] 能用 Race、Mutex/Block Profile、Trace 与业务指标定位竞争

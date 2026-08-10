@@ -2,6 +2,7 @@
 title: Fetch 与 http.Client
 description: 对照浏览器 Fetch 和 Go HTTP Client 的请求、状态码、超时、连接复用与资源释放。
 type: mapping
+maturity: reviewed
 summary: 两者都会在网络层失败时返回错误，但非 2xx 响应仍然需要业务代码主动判断；Go 还必须正确复用 Client 并关闭响应体。
 prerequisites:
   - HTTP 状态码

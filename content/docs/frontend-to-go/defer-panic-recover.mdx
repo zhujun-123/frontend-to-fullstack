@@ -1,0 +1,144 @@
+---
+title: defer、panic 与 recover
+description: 从 try/finally/throw 出发，理解 Go 的资源清理、栈展开、恢复边界与生产故障证据。
+type: mapping
+maturity: verified
+summary: defer 为当前函数注册 LIFO 清理，panic 沿当前 Goroutine 栈展开并执行 defer，recover 只能在合适的 deferred function 中截获当前 panic。
+firstPrinciple: 无论正常返回还是异常展开都要恢复局部资源不变量，同时把不可恢复错误限制在明确的请求或任务边界。
+frontendAnalogy: finally 能帮助理解资源清理，throw 能帮助理解非局部退出；Go 的普通业务错误仍应显式返回 error，而不是用 panic 代替。
+lastVerified: '2026-08-10'
+testedWith:
+  - Go 1.26.5 darwin/arm64
+lab:
+  path: examples/go-runtime/labs/deferlab
+  commands:
+    - 'cd examples/go-runtime && go test ./labs/deferlab'
+    - 'cd examples/go-runtime && go test -bench=. -benchmem ./labs/deferlab'
+prerequisites:
+  - JavaScript try/finally
+  - Go error
+  - Goroutine 栈
+related:
+  - error 模型
+  - HTTP Middleware
+  - 可观测性
+sourceRefs:
+  - title: The Go Programming Language Specification - Defer statements
+    url: https://go.dev/ref/spec#Defer_statements
+    kind: specification
+    publisher: Go Team
+    version: Go 1.26
+    note: defer 参数求值、LIFO 与返回值修改的语言契约。
+    verifiedAt: '2026-08-10'
+  - title: The Go Programming Language Specification - Handling panics
+    url: https://go.dev/ref/spec#Handling_panics
+    kind: specification
+    publisher: Go Team
+    version: Go 1.26
+    note: panic 展开与 recover 生效条件。
+    verifiedAt: '2026-08-10'
+  - title: Go Runtime Source - panic.go
+    url: https://github.com/golang/go/blob/go1.26.5/src/runtime/panic.go
+    kind: project
+    publisher: Go Team
+    version: go1.26.5
+    note: defer、panic、recover 与开放编码 defer 的固定版本实现。
+    verifiedAt: '2026-08-10'
+  - title: Defer, Panic, and Recover
+    url: https://go.dev/blog/defer-panic-and-recover
+    kind: official
+    publisher: Go Team
+    version: current
+    note: 三条 defer 规则和 panic/recover 的官方教学说明。
+    verifiedAt: '2026-08-10'
+---
+
+## 先说人话
+
+<AnalogyStory
+  title="下班清单、火警和防火隔离门"
+  scene="厨师离开工位前要按清单关火、归还钥匙、清理台面；即使中途响起火警，这些离开前必须做的动作也要按倒序执行。防火门可以把事故限制在一个区域，但不能证明里面的设备还能继续使用。"
+  mapping="defer = 离开前清单；panic = 当前流程无法继续的火警；recover = 请求或任务边界上的防火隔离门。"
+  takeaway="defer 在函数退出或 panic 展开时按 LIFO 执行；recover 只能在正确的 deferred function 中截获当前 Goroutine 的 panic。"
+  boundary="普通业务失败应该返回 error，而不是到处拉火警。recover 的目标是记录证据并隔离任务，不是吞掉异常后假装一切正常。"
+/>
+
+## 问题与系统不变量
+
+文件、锁、连接和 Span 必须在所有退出路径上释放。普通返回可以显式清理，但深层调用 panic 时控制流会跨越多个栈帧；Runtime 必须按确定顺序执行已注册 defer，并允许最外层边界记录证据和结束当前任务。
+
+## 前端认知起点
+
+`finally` 与 `defer` 都用于“无论如何都执行”，`throw` 与 `panic` 都会跳过普通控制流。区别是 JavaScript 常用异常表达预期业务失败，而 Go 约定普通失败返回 `error`，panic 更适合违反内部不变量、初始化无法继续或框架边界隔离未知崩溃。
+
+## 最小心智模型
+
+```text
+进入函数 -> 注册 defer -> 正常 return 或 panic
+                         -> 按后进先出执行 defer
+                         -> recover 成功则停止当前 panic
+                         -> 未 recover 则继续向上展开当前 Goroutine
+```
+
+defer 的函数值与参数在注册时求值；deferred function 在外层函数返回前执行，并可修改命名返回值。
+
+## Go 1.26.5 当前实现
+
+编译器会根据控制流选择开放编码 defer 或 Runtime 管理路径，以减少常见 defer 的开销；语义仍由规范保证。panic 触发当前 Goroutine 的栈展开并执行 defer。`recover()` 只有在当前 Goroutine 正在 panic，且由 deferred function 在正确上下文直接调用时才返回 panic 值，其他情况返回 nil。
+
+多个 defer 按 LIFO 执行，这使得“先获取 A，再获取 B；先释放 B，再释放 A”自然成立。它不代表任何位置都应该 defer：长循环体中直到外层函数结束才执行的 defer 可能长时间占用资源。
+
+## 类比成立范围
+
+- `defer file.Close()` 与 `finally { close() }` 都保护资源释放。
+- Panic 栈与异常 Stack Trace 都是定位非预期控制流的关键证据。
+- HTTP Error Boundary 与 Recover Middleware 都应只隔离当前请求并记录上下文。
+
+## 类比失效边界
+
+- panic 不是 Go 版本的所有异常；输入校验、数据库失败、下游超时应返回 error。
+- recover 只能处理当前 Goroutine 的 panic，不能在父 Goroutine 捕获子 Goroutine panic。
+- recover 后继续使用可能已破坏不变量的共享状态非常危险。
+- `os.Exit` 和致命 Runtime 错误不会像普通 panic 一样可靠执行所有 defer。
+
+## 可运行实验
+
+```bash
+cd examples/go-runtime
+go test ./labs/deferlab
+go test -bench=. -benchmem ./labs/deferlab
+```
+
+正常实验验证 defer LIFO 和命名返回值修改；错误边界实验触发 `panic("boom")` 并在局部边界恢复。不要把 Benchmark 的单次数字外推到真实请求，编译器优化与控制流会影响实现路径。
+
+## 真实生产故障场景
+
+消息消费 Goroutine 对未知 payload 发生索引越界。顶层没有恢复边界，整个进程退出并触发重启；如果只 `recover()` 不记录 Stack 和消息 ID，进程虽然活着，坏消息会反复重试且无法定位。正确边界应记录 Panic 值、Stack、任务 ID，标记任务失败并决定是否进入死信队列。
+
+## 证据与排查
+
+| 证据 | 必须保留 |
+| --- | --- |
+| Panic Stack | 完整调用栈和首次 panic 位置 |
+| 结构化日志 | request/job ID、输入摘要、版本、实例、恢复边界 |
+| 指标 | panic 总数、按 Handler/Consumer 分类、重启次数 |
+| Trace | panic 前后的请求 Span 和下游调用 |
+| Core / Runtime Fatal | 区分普通 panic、OOM、并发 Map Fatal 等不可恢复故障 |
+
+Recover Middleware 应在写响应前判断是否已部分写出，避免返回一个看似完整但内容已损坏的 200。
+
+## 常见错误与版本变化
+
+- `defer response.Body.Close()` 要放在成功拿到 Body 之后。
+- 循环中每次打开资源却 defer 到外层函数结束，可能耗尽文件描述符；把单次逻辑抽成函数。
+- `recover` 包装在普通辅助函数中可能无法生效，必须遵守规范规定的 deferred 调用上下文。
+- Go 1.21 起 `panic(nil)` 默认产生非 nil 的 `*runtime.PanicNilError`，避免 recover 无法区分“没有 panic”和“panic(nil)”；旧行为可通过兼容开关观察。
+- 开放编码 defer 是实现优化，不应成为业务正确性依赖。
+
+## 完成检查表
+
+- [x] 能解释 defer 参数求值与 LIFO
+- [x] 能区分 error、panic 与 Runtime Fatal
+- [x] 已运行顺序、命名返回值、recover 与 Benchmark 实验
+- [x] 知道 recover 的 Goroutine 和调用上下文边界
+- [x] 能设计带 Stack、任务 ID 和指标的生产恢复边界

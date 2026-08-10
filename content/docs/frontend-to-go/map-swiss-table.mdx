@@ -1,0 +1,149 @@
+---
+title: Go Map 与 Swiss Table
+description: 从 JavaScript Map 与 Object 出发，理解 Go 1.26.5 Map 的 Swiss Table、查找、增长、迭代和并发边界。
+type: mapping
+maturity: verified
+summary: Go 1.26.5 的内建 Map 基于 Swiss Table；Group 用控制字并行筛选 8 个槽位，Table 通过探测处理冲突，大 Map 通过 Directory 与可扩展哈希分拆增长。
+firstPrinciple: 在 Key 可哈希且可比较的前提下，以可接受的内存开销提供快速查找，并在冲突、删除、增长与迭代期间保持语言语义。
+frontendAnalogy: JavaScript Map 的 Key-Value 认知可以迁移；对象属性顺序、并发修改安全和旧 hmap/bmap 实现不能照搬。
+lastVerified: '2026-08-10'
+testedWith:
+  - Go 1.26.5 darwin/arm64
+lab:
+  path: examples/go-runtime/labs/maplab
+  commands:
+    - 'cd examples/go-runtime && go test ./labs/maplab'
+    - 'cd examples/go-runtime && go test -bench=. -benchmem ./labs/maplab'
+prerequisites:
+  - Hash Table
+  - Go comparable
+  - 数据竞争
+related:
+  - Mutex 与 Atomic
+  - Go 内存分配
+  - Go 1.24 版本变化
+sourceRefs:
+  - title: Go Runtime Source - internal/runtime/maps/map.go
+    url: https://github.com/golang/go/blob/go1.26.5/src/internal/runtime/maps/map.go
+    kind: project
+    publisher: Go Team
+    version: go1.26.5
+    note: Swiss Table 术语、Directory、增长和迭代语义的固定版本源码。
+    verifiedAt: '2026-08-10'
+  - title: Go Runtime Source - internal/runtime/maps/table.go
+    url: https://github.com/golang/go/blob/go1.26.5/src/internal/runtime/maps/table.go
+    kind: project
+    publisher: Go Team
+    version: go1.26.5
+    note: Table 查找、写入、删除、探测和分裂实现。
+    verifiedAt: '2026-08-10'
+  - title: The Go Programming Language Specification - Map types
+    url: https://go.dev/ref/spec#Map_types
+    kind: specification
+    publisher: Go Team
+    version: Go 1.26
+    note: Key 可比较性、nil Map、读取写入和迭代的语言契约。
+    verifiedAt: '2026-08-10'
+  - title: Go 1.24 Release Notes - Map implementation
+    url: https://go.dev/doc/go1.24#runtime
+    kind: official
+    publisher: Go Team
+    version: Go 1.24
+    note: 内建 Map 切换到 Swiss Table 的官方版本说明。
+    verifiedAt: '2026-08-10'
+---
+
+## 先说人话
+
+<AnalogyStory
+  title="带八格抽屉的订单索引柜"
+  scene="前台拿到订单号后，不会从第一张订单翻到最后一张。系统先算出该去哪个柜子，再看抽屉旁的一排小灯，一次筛出八个格子里哪些可能放着目标订单，最后才核对真正的订单号。"
+  mapping="Hash = 根据订单号计算位置；Group = 八格抽屉；控制字 = 抽屉旁的状态灯；H2 = 灯上保留的简短指纹；Tombstone = 这里删过订单但后面可能还有。"
+  takeaway="Go 1.26.5 的 Swiss Table 用控制字并行筛选 8 个槽位，再做真实 Key 比较；冲突时沿探测序列继续查找。"
+  boundary="小灯只能筛选候选，不能代替真正的 Key 比较。Map 迭代没有稳定顺序，也不能因为查找快就忽略并发读写安全。"
+/>
+
+## 问题与系统不变量
+
+Map 要把任意可比较 Key 映射到 Value。哈希冲突一定会发生，因此查找必须继续探测并最终用 Key 比较确认；删除不能错误截断后续探测；增长和迭代还要遵守语言规范对新增、修改和删除元素的要求。
+
+## 前端认知起点
+
+JavaScript `Map` 能直接迁移 Key-Value、缺失检查和迭代概念。`Object` 更像属性集合，并带有原型、字符串/Symbol Key 等额外语义。Go Map 的 Key 类型在编译期固定，读取缺失 Key 返回 Value 零值，需要 comma-ok 区分。
+
+## 最小心智模型
+
+Go 1.26.5 的 Group 包含 8 个 Key/Value Slot 和一个 8 字节控制字。哈希被拆成 H1 与 H2：H1 用于选择 Table 和探测起点，H2 存在控制字中，用位运算一次筛出 Group 内可能匹配的槽位，再做真实 Key 比较。
+
+<Mermaid
+  chart={`flowchart LR
+    K[Key] --> H[Hash]
+    H --> D[Directory by upper H1 bits]
+    D --> T[Swiss Table]
+    T --> G[Group: 8 slots and control word]
+    G --> C[Match H2 candidates]
+    C --> E[Compare actual keys]
+    G -. collision .-> P[Quadratic probe next group]`}
+/>
+
+## Go 1.26.5 当前实现
+
+小 Map 在不超过 8 个元素时可直接使用一个 Group。更大的 Map 由 Directory 指向一个或多个 Table；每个 Table 是开放寻址 Swiss Table，使用二次探测。控制字区分空、已删除 Tombstone 和已占用槽位，并保存已占用 Key 哈希的低 7 位。
+
+单个 Table 先扩容，达到实现上限后分裂为两个 Table；Directory 使用可扩展哈希的高位索引 Table。这样增长只重排一部分 Map，而不是一次搬迁全部数据。
+
+迭代顺序未指定且实现会随机化。迭代期间删除尚未访问项则不应返回；修改项应返回最新值；新增项可能出现也可能不出现。
+
+## 类比成立范围
+
+- JS Map 与 Go Map 都适合动态 Key-Value 查找。
+- 两者都需要区分“Key 不存在”和“Value 恰好为空/零值”。
+- 预估容量都能减少增长和重排成本。
+
+## 类比失效边界
+
+- Go Map 的 Key 必须可比较，Slice、Map 和 Function 不能直接作为 Key。
+- Go Map 迭代顺序不稳定，不能用它做排序或协议输出保证。
+- 普通 Go Map 不支持并发读写；前端单线程状态对象的经验不能证明服务端并发安全。
+- Go 1.24 之前常见的 `hmap/bmap`、Bucket 与 Overflow Bucket 文章属于历史实现，不是 1.26.5 当前结构。
+
+## 可运行实验
+
+```bash
+cd examples/go-runtime
+go test ./labs/maplab
+go test -bench=. -benchmem ./labs/maplab
+```
+
+正常实验使用 comma-ok 区分“存在且值为 0”和“不存在”。错误边界实验验证读取 nil Map 返回零值，但写 nil Map 会 panic。Benchmark 只验证当前环境查找趋势，不用固定性能阈值证明复杂度。
+
+## 真实生产故障场景
+
+一个进程级配置 Map 被后台刷新 Goroutine 更新，同时多个 HTTP Handler 读取。低流量时看似正常，压力上来后 Race Detector 报告读写竞争，生产可能直接出现 `concurrent map read and map write`。修复需要明确快照替换、Mutex、`atomic.Pointer` 或 `sync.Map` 的适用模型，而不是重试。
+
+## 证据与排查
+
+| 证据 | 重点 |
+| --- | --- |
+| `go test -race` | 读写 Map 的两条调用栈与创建位置 |
+| Fatal / Panic 日志 | `concurrent map writes`、nil Map 写入、不可比较 Key |
+| CPU Profile | 哈希、Key 比较、JSON Map 处理是否成为热点 |
+| Heap Profile | 大 Map、Key/Value 持有与扩容内存 |
+| Mutex Profile | 加锁保护后是否出现高竞争 |
+| 业务指标 | Map 项数、刷新频率、命中率和单次构建耗时 |
+
+## 常见错误与版本变化
+
+- `value := m[key]` 不能区分缺失和零值，必要时使用 `value, ok := m[key]`。
+- nil Map 可以读和删，不能写；`make` 或字面量才能得到可写 Map。
+- 删除迭代中的元素受规范支持，但新增项是否被访问不确定。
+- Go 1.24 将 Map 实现改为 Swiss Table；旧 Bucket 图只能标注为 Go 1.23 及更早历史。
+- `sync.Map` 针对写一次读多次或不同 Goroutine 操作不相交 Key 等特定模式，不是普通 Map 的无脑替代。
+
+## 完成检查表
+
+- [x] 能解释 Group、控制字、H1/H2 和探测
+- [x] 能说明 Directory、Table 增长与分裂的目的
+- [x] 已运行 comma-ok、nil Map 与 Benchmark 实验
+- [x] 不再把 hmap/bmap 当作 Go 1.26.5 当前实现
+- [x] 能用 Race、Panic、CPU/Heap/Mutex Profile 排查 Map 问题

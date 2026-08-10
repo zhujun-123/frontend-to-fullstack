@@ -62,12 +62,16 @@ export default function HomePage() {
               <dd>7 个阶段</dd>
             </div>
             <div>
-              <dt>前端类比</dt>
-              <dd>30 组映射</dd>
+              <dt>已验证专题</dt>
+              <dd>10 篇</dd>
             </div>
             <div>
-              <dt>基础内容</dt>
-              <dd>6 篇专题</dd>
+              <dt>已校对专题</dt>
+              <dd>6 篇</dd>
+            </div>
+            <div>
+              <dt>概念映射</dt>
+              <dd>43 条</dd>
             </div>
             <div>
               <dt>任务配方</dt>
