@@ -1,0 +1,5 @@
+{
+  "title": "Coding Agent 工程拆解",
+  "defaultOpen": true,
+  "pages": ["index", "pi-minimal-harness", "grok-production-harness", "dsh-composable-harness"]
+}

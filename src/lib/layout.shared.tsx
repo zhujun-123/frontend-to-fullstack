@@ -19,6 +19,10 @@ const primaryLinks: NonNullable<BaseLayoutProps['links']> = [
     url: '/docs/skills',
   },
   {
+    text: 'Agent 工程',
+    url: '/docs/agent-engineering',
+  },
+  {
     text: '前端 → Go',
     url: '/docs/frontend-to-go',
   },

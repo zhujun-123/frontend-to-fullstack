@@ -1,0 +1,87 @@
+---
+title: Coding Agent 工程拆解
+description: 不停留在提示词和工具清单，从 Pi、Grok Build 与 DeepSeek Harness 理解一个 Coding Agent 如何组装、执行、约束和演进。
+type: overview
+maturity: reviewed
+summary: 模型决定下一步做什么，Harness 决定模型看见什么、能做什么、失败后如何恢复，以及整个过程是否可验证。
+firstPrinciple: Coding Agent 的工程问题，是在不确定的模型决策之外建立确定的上下文、工具协议、权限边界、状态生命周期和可观测证据。
+frontendAnalogy: 像浏览器并不只是 JavaScript 引擎；真正可用的开发环境还需要 DOM、网络、权限、存储、事件循环和 DevTools。
+lastVerified: "2026-08-17"
+related:
+  - Skills 与真实提示词
+  - 全栈任务配方
+  - 前端 → Go 原理映射
+sourceRefs:
+  - title: Pi-Agent 项目原理详解 · 第 1 章
+    url: https://www.dgzhuya.com/modules/ch01-overview
+    kind: practice
+    publisher: dgzhuya.com
+    note: 用于发现 Pi 的极简设计与学习路径；正文由官方仓库独立核验，不复制原文和插图。
+    verifiedAt: "2026-08-17"
+  - title: Grok Build 源码拆解
+    url: https://xiangyangqiaomu.feishu.cn/docx/OAoYdiZ1eoc2HTxmmZ3clWIPnLf
+    kind: practice
+    publisher: 向阳乔木 · 飞书公开文档
+    note: 公开页面抓取只覆盖文章前半部分，因此仅用于发现选题，机制结论回到官方源码核验。
+    verifiedAt: "2026-08-17"
+  - title: Cordis 在做什么：从 DeepSeek Harness 看
+    url: https://github.com/antinomie-lab/dsh-explore/blob/9c31ab1cd2cb497766954a0880bed6d1d2e55c78/passages/cordis-from-dsh.md
+    kind: practice
+    publisher: Antinomie Lab
+    version: 9c31ab1
+    note: 仓库未声明文章许可证，只提炼事实与方法并重新组织表达。
+    verifiedAt: "2026-08-17"
+---
+
+## 先把 Harness 说清楚
+
+Coding Agent 不是“模型加一个终端”。模型只能根据当前输入决定下一步；把仓库规则、历史消息和工具说明送进去，把工具调用安全地执行，再把结果送回来的是 **Harness**。
+
+一个能进入真实工作的 Harness 至少要持续回答五个问题：
+
+1. **上下文**：模型这一轮应该看见什么，旧信息何时压缩？
+2. **行动**：工具调用采用什么协议，结果如何与请求配对？
+3. **边界**：哪些动作需要批准，执行后又被什么沙箱限制？
+4. **状态**：会话、记忆、子任务和插件由谁持有，何时回收？
+5. **证据**：失败、成本、重试和最终结果如何被观察与复核？
+
+<Mermaid
+  chart={`flowchart LR
+    U[用户目标] --> C[上下文组装]
+    C --> M[模型决策]
+    M --> T[工具协议]
+    T --> P[权限与沙箱]
+    P --> E[真实执行]
+    E --> R[结果与证据]
+    R --> C
+    C --> S[会话 / 压缩 / 记忆]`}
+/>
+
+## 三个项目，三种取舍
+
+这三份材料不适合合并成一篇“功能大全”。它们真正有价值的地方，是展示了三种不同的 Harness 设计重心。
+
+| 路线 | 首要问题 | 核心做法 | 最值得学习的判断 |
+| --- | --- | --- | --- |
+| [Pi：极简内核](/docs/agent-engineering/pi-minimal-harness) | 怎样让 Agent 足够小，开发者能读懂并改造 | 模型适配、Agent Loop、工具和界面分层；缺失能力通过扩展补充 | 少做功能也可以是一种产品能力 |
+| [Grok Build：生产控制面](/docs/agent-engineering/grok-production-harness) | 长时间执行时怎样控制风险、上下文和失败 | 工具协议、权限审批、OS 沙箱、压缩、记忆、成本和恢复 | Prompt 不能替代代码级不变量 |
+| [DeepSeek Harness：可组合插件树](/docs/agent-engineering/dsh-composable-harness) | 复杂能力怎样替换、热重载并正确回收 | 命名服务、依赖调度、可逆副作用、Patch、Preset 与隔离 | 扩展性首先是生命周期问题 |
+
+## 一条共同主线
+
+三个项目看起来一个做减法、一个做完备控制、一个追求动态组合，但它们都没有把“模型更聪明”当作唯一答案。
+
+- Pi 通过缩小内核，让系统更容易理解和替换。
+- Grok Build 把不确定行为包进权限、协议、预算与恢复机制。
+- DeepSeek Harness 把组件的注册、依赖和清理提升为框架能力。
+
+因此阅读这个专栏时，不要只记项目名和 API。每一篇都要追问：**它维护了什么系统不变量，复杂度又被放到了哪里？**
+
+## 阅读与引用边界
+
+本专栏是基于公开材料和固定版本源码撰写的原创学习笔记，不是三篇原文的镜像：
+
+- 二手文章用于发现值得研究的问题，机制结论尽量回到官方仓库。
+- 引用源码时固定 Commit，避免 `main` 更新后事实漂移。
+- 未声明许可证的文章不复制段落、插图和章节结构。
+- “已校对”表示完成来源核对，但还没有像 Go Runtime 专题一样配套独立 Lab，因此不标记为“已验证”。

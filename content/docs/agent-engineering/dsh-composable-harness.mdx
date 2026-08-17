@@ -1,0 +1,127 @@
+---
+title: DeepSeek Harness：把 Agent 变成可组合插件树
+description: 从命名服务、依赖调度、可逆副作用、Patch、Preset 与隔离，理解复杂 Agent 如何替换组件并正确回收。
+type: conceptual
+maturity: reviewed
+summary: DSH 的关键不是插件数量，而是让注册、启动、替换和卸载拥有统一生命周期，使 Harness 的形态可以由配置组合。
+firstPrinciple: 动态扩展系统最难的不是加载代码，而是依赖何时就绪、资源归谁所有、替换时怎样停止旧消费者，以及失败后如何撤销已完成的副作用。
+frontendAnalogy: 像 React Effect 不只负责订阅，还必须返回 cleanup；如果热更新只加载新模块却不清理旧监听器，页面很快会进入不可解释状态。
+lastVerified: "2026-08-17"
+prerequisites:
+  - 理解插件、依赖注入与生命周期
+related:
+  - Coding Agent 工程拆解
+  - Pi-Agent：极简 Harness 为什么更容易理解
+sourceRefs:
+  - title: Cordis 在做什么：从 DeepSeek Harness 看
+    url: https://github.com/antinomie-lab/dsh-explore/blob/9c31ab1cd2cb497766954a0880bed6d1d2e55c78/passages/cordis-from-dsh.md
+    kind: practice
+    publisher: Antinomie Lab
+    version: 9c31ab1
+    note: 文章固定了 DSH 与 Cordis 的分析基线；所在仓库未声明许可证，本文只提炼事实并重新组织表达。
+    verifiedAt: "2026-08-17"
+  - title: DeepSeek Harness 固定版本
+    url: https://github.com/deepseek-ai/deepseek-harness/tree/47f943859bef60e4160492346772ded9b24f765a
+    kind: project
+    publisher: DeepSeek
+    license: MIT
+    version: 47f9438
+    note: 用于核验服务、Fiber、Effect、Patch、Preset 与隔离机制。
+    verifiedAt: "2026-08-17"
+---
+
+## 先说人话：插件不是插进去就结束
+
+<AnalogyStory
+  title="一栋能带电更换房间的模块化大楼"
+  scene="每个房间先声明自己需要水、电和网络。条件齐了才开放；拆走供电模块前，依赖它的房间先停用。房间里登记的门禁、线路和设备也必须随房间一起撤掉。"
+  mapping="Context Tree 是大楼结构，Service 是命名插座，inject 是开工条件，Fiber 是房间的一次实例，effect 是安装时登记的撤销清单，Patch 与 Preset 决定本次装哪些模块。"
+  takeaway="真正的可插拔不是动态 import，而是依赖调度、所有权、停止顺序和清理行为都由统一生命周期管理。"
+  boundary="Context Tree 表示所有权和作用域，不是业务调用链；服务隔离也不是操作系统安全沙箱，文件、网络和密钥仍需要单独控制。"
+/>
+
+## Everything is a Plugin 解决什么
+
+DSH 把模型适配器、Shell、工具注册表、会话服务，甚至 Agent Loop 自身都放进插件体系。这样做不是为了展示“万物皆插件”的口号，而是让每个能力都面对相同的工程问题：
+
+- 它依赖哪些服务？
+- 谁拥有它创建的资源？
+- 依赖消失时先停谁？
+- 替换实现时如何清理旧状态？
+- 最终运行组合能否被查看和复现？
+
+## 五个关键机制
+
+### 1. Context Tree：先确定所有权
+
+每次挂载产生一个带子 Context 的运行实例。父节点卸载时，子树随之回收。这里的树描述“谁创建并拥有谁”，不是代码调用顺序，也不是业务领域层级。
+
+### 2. 命名服务：消费方只认契约
+
+Shell、LLM、Web 等能力通过服务名暴露。消费插件读取 `ctx.shell`，不直接引用 Bash 或 PowerShell 的实现包。独占服务适合当前只能有一个实现的能力；多个搜索 Provider 这类高频变化，更适合在服务内部维护注册表。
+
+### 3. inject：依赖齐了才启动
+
+插件先声明依赖，框架在服务就绪后再执行启动代码。依赖提供方被替换时，旧消费者会停下并在新实现上重建，因此不会继续握着已经失效的闭包和对象引用。
+
+这解决的是组件内部依赖，不会自动证明数据库、外部 API 或消息队列已经可用。外部系统仍需要健康检查、超时和业务级 readiness。
+
+### 4. effect：做每一步时交出撤销方法
+
+工具注册、事件监听和 Provider 登记都属于副作用。`effect` 的关键不是语法，而是统一纪律：谁登记，撤销函数就归谁的实例持有；实例卸载时按顺序执行。
+
+如果初始化包含多步，边执行边登记撤销比“全部成功后返回一个 cleanup”更可靠。中途失败时，已经完成的部分仍然可以倒回去。
+
+但只有进入 Effect 系统的副作用才能自动回收。支付、邮件、远端写入等不可逆动作，仍需要幂等键、补偿和人工处置方案。
+
+### 5. Patch、Preset 与 isolate：组合成为数据
+
+基础 YAML 描述插件树，Patch 按层覆盖部署差异，Preset 决定一次 Session 装载哪些能力。会话级服务进入隔离解析空间后，同一进程中的不同 Session 可以拥有同名但互不冲突的服务实例。
+
+| 机制 | 作用范围 | 典型用途 |
+| --- | --- | --- |
+| 基础配置 | 进程 | 默认插件树 |
+| Patch | 部署或机器 | 切换实现、禁用组件、覆盖参数 |
+| Preset | Session | 选择极简、标准或可自修改能力组合 |
+| isolate | 服务解析空间 | 避免多个 Session 争抢同名服务 |
+
+多层覆盖也会提高排查成本，因此系统必须能输出最终生效配置，不能要求开发者靠脑内合并 YAML。
+
+## 三段式分包为什么存在
+
+DSH 经常把一个能力拆成三类包：
+
+1. **Definition**：定义契约和服务名。
+2. **Provider**：提供 Bash、Sandbox 或搜索等具体实现。
+3. **Consumer**：把能力暴露成模型工具或上层产品行为。
+
+这不是 Cordis 强制的语法，而是一条工程纪律。它让高频替换停留在 Provider 层，契约和消费者不用跟着变化。代价是包数量和理解成本上升，小项目不应该为了形式完整机械照搬。
+
+## Meta Harness 的真正含义
+
+当系统提示词、工具、Shell 和 Agent Loop 都成为可替换插件后，Agent 可以在运行期间修改自己的组合。它不是只“调用已有工具”，而是可能生成插件、挂载、验证，再在失败时卸载。
+
+这同时抬高了信任边界。执行模型生成的插件代码，风险应按执行 Shell 代码处理；插件作用域隔离也不等于文件系统和网络沙箱。自修改能力只有在权限、验证和回滚链路完整时才成立。
+
+## 什么时候值得使用这种设计
+
+适合：
+
+- 多种模型、Shell、搜索或存储实现需要频繁切换。
+- 同一进程承载不同能力组合的多个 Session。
+- 组件需要热替换，且必须严格清理监听器、工具和后台资源。
+- 最终 Agent 形态需要通过配置审计和复现。
+
+不适合：
+
+- 只有少量固定组件，重启成本很低。
+- 团队尚未建立稳定契约、测试与资源所有权规则。
+- 只是希望“方便注册几个工具”，却不需要动态替换和级联卸载。
+
+## 读完后的自测
+
+1. 插件挂载和插件启动为什么不能当成同一件事？
+2. 服务实现被替换时，为什么不能只把新对象赋值给旧消费者？
+3. Effect 能回滚数据库写入或外部支付吗？为什么？
+4. Session 服务隔离与 OS 沙箱分别保护什么？
+5. 如果最终配置无法 dump，Patch 层叠会制造什么生产问题？

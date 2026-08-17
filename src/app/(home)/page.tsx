@@ -14,6 +14,12 @@ const supportingPaths = [
     href: '/docs/skills',
   },
   {
+    label: 'Agent 工程',
+    title: '看懂 Coding Agent 的外壳',
+    description: '从三个真实项目理解上下文、工具、安全、状态与可扩展 Harness。',
+    href: '/docs/agent-engineering',
+  },
+  {
     label: '学习路线',
     title: '从一次接口修改开始',
     description: '先进入真实项目，再补数据、可靠性和部署知识。',
@@ -80,6 +86,10 @@ export default function HomePage() {
             <div>
               <dt>Skill 来源</dt>
               <dd>14 组精选</dd>
+            </div>
+            <div>
+              <dt>Agent 工程</dt>
+              <dd>3 个案例</dd>
             </div>
           </dl>
           <p className="home-notes-caption">内容优先使用官方文档校验，并保留来源和适用边界。</p>
