@@ -1,0 +1,94 @@
+---
+title: 实验二：响应丢失后重复创建
+description: 观察写入已经发生但响应未到达的中间状态，验证重试、并发、幂等键与冲突处理。
+type: practice
+maturity: verified
+summary: 客户端不知道结果时，需要查询和幂等重试；取消等待不会撤销已完成的写入。
+firstPrinciple: 一次业务操作和一次网络请求不是同一个概念，多次传输必须能够对应到同一份业务结果。
+frontendAnalogy: 提交按钮超时后再次点击，用户仍然只想创建一笔订单。
+lastVerified: '2026-09-20'
+testedWith:
+  - Go 1.26.5 darwin/arm64
+  - Playwright Chromium（自动化浏览器，非真机）
+lab:
+  path: examples/go-runtime/labs/acceptance
+  commands:
+    - pnpm labs:acceptance
+    - cd examples/go-runtime && go test -race ./labs/acceptance -run 'TestRetry|TestSameKey|TestLostResponse|TestInvalidInputs' -v
+    - pnpm test:e2e --grep orders
+related:
+  - 数据库与状态
+  - 贯穿全链路的可靠性与安全
+sourceRefs:
+  - title: Go Request.Context
+    url: https://pkg.go.dev/net/http@go1.26.5#Request.Context
+    kind: official
+    publisher: Go Team
+    version: Go 1.26.5
+    verifiedAt: '2026-09-20'
+    note: 核对取消的请求生命周期；实验用实际写入验证取消不撤销已完成的副作用。
+---
+
+## 先说人话
+
+服务员已经把订单交到厨房，但回执丢了。客人没收到消息又下一次单，如果厨房无法识别“这是同一笔”，就会做两份。
+
+类比边界：真实系统不能依赖一个服务员的记忆。多实例、重启和跨服务写入需要持久化约束与恢复流程。
+
+## 问题与系统不变量
+
+同一个用户的同一业务操作，只产生一次写入。相同幂等键和参数应返回同一结果；相同键但参数不同返回冲突。
+
+实验按用户、模式和键隔离记录。错误模式每次追加一条；修复模式把查重与写入放在同一把锁内，并保存首次结果。这里的锁只保证单进程原子性。
+
+## 复现错误
+
+运行 `pnpm labs:acceptance`，打开 `http://127.0.0.1:8091`，点击“复现重复创建”。
+
+页面先发送订单，服务端写入后延迟响应 3 秒。页面轮询确认记录存在，再取消第一次等待并重试，最后读取记录数量。应出现 `count: 2` 和 `invariantPassed: false`。
+
+这模拟客户端失去响应后的未知状态；不把“等了若干毫秒”当成写入成功证据。若首次响应已经收到或未观察到写入，页面会报告实验失败。
+
+## 修复与验证
+
+点击“验证幂等修复”，两次请求复用同一个键，结果应为 `count: 1`。每次重新运行实验会生成新键，表示新的一次业务操作。
+
+```bash
+pnpm exec playwright install chromium
+pnpm build
+pnpm test:e2e --grep orders
+cd examples/go-runtime
+go test -race ./labs/acceptance -run 'TestRetry|TestSameKey|TestLostResponse|TestInvalidInputs' -v
+```
+
+`server.go` 中 `createOrder` 的临界区同时完成查重、参数比较和写入。测试发出 20 个并发请求，检查错误模式有 20 条、修复模式只有 1 条；重试返回的订单 ID 和正文保持一致。
+
+## 异常与恢复
+
+- 相同键换商品：返回 409，不新增记录；客户端应确认业务意图，而不是盲目重试。
+- 不同用户使用相同键：各自独立，不泄露或复用别人的结果。
+- 无身份、无键、非法 JSON：拒绝请求，不写入。
+- 写入后断开连接：查询仍能看到记录，重试复用首次结果。
+- 服务重启：内存清空，实验不保证跨重启幂等。
+
+## 证据与排查
+
+保留页面输出中的 `key`、`firstOutcome`、`retryOrder` 和 `orders`。浏览器 Network 中确认第一次 POST 被取消、第二次复用相同键；以最终 GET 的结果判断写入数量。
+
+若出现重复记录，先检查是否为每次重试生成了新键，再检查去重作用域、查重与写入是否原子，以及记录是否过期。
+
+## 适用边界
+
+本实验使用 Mutex 和内存 Map，没有数据库，也没有支付。它演示的是原子查重及结果复用，不证明数据库事务或多实例场景成立。
+
+生产实现需要把业务唯一约束、幂等记录与数据写入放到合适的持久化事务边界，明确键有效期、参数指纹、处理中状态、结果查询和故障恢复。外部 API 的副作用可能还需要补偿；不能把内存示例直接部署。
+
+继续阅读 [数据库与状态](/docs/fullstack-lifecycle/database-and-state)、[可靠性与安全](/docs/fullstack-lifecycle/reliability-and-security)，并使用[事务、重试与幂等配方](/docs/playbooks)。
+
+## 完成检查表
+
+- 错误模式复现至少两条写入。
+- 修复模式在重试和并发下均只保留一条。
+- 同键不同参数返回冲突且无额外副作用。
+- 能解释取消等待和撤销写入的区别。
+- 明确单进程实验与持久化、多实例保证的边界。

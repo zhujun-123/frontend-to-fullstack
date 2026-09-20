@@ -1,0 +1,4 @@
+{
+  "title": "AI 全栈交付验收",
+  "pages": ["index", "search-race", "idempotent-retry", "resource-authorization"]
+}

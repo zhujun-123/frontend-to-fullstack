@@ -4,6 +4,8 @@
   "private": true,
   "description": "面向前端开发者的全栈学习知识库，重点建立前端原理与 Go 原理之间的映射。",
   "scripts": {
+    "labs:acceptance": "cd examples/go-runtime && go run ./cmd/acceptancelab",
+    "test:e2e": "playwright test",
     "build": "next build --webpack",
     "dev": "next dev --webpack",
     "start": "next start",
@@ -27,17 +29,18 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/mdx": "^2.0.14",
     "@types/node": "^26.1.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "postcss": "^8.5.24",
-    "tailwindcss": "^4.3.3",
-    "typescript": "^6.0.3",
     "eslint": "^9.39.4",
     "eslint-config-next": "16.2.12",
     "gray-matter": "^4.0.3",
-    "tsx": "^4.20.6"
+    "postcss": "^8.5.24",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.20.6",
+    "typescript": "^6.0.3"
   }
 }

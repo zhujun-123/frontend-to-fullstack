@@ -1,0 +1,97 @@
+---
+title: 实验三：隐藏按钮之后仍能越权
+description: 绕过界面直接请求资源，同时检查拒绝路径、合法用户与返回内容。
+type: practice
+maturity: verified
+summary: 界面控制不建立安全边界；服务端必须在每次资源访问时验证调用者与资源的关系。
+firstPrinciple: 调用者可以自构造请求，授权必须在可信执行边界决定，并覆盖资源而不只是路由。
+frontendAnalogy: 路由守卫或隐藏按钮只能控制正常操作入口，无法阻止直接调用 API。
+lastVerified: '2026-09-20'
+testedWith:
+  - Go 1.26.5 darwin/arm64
+  - Playwright Chromium（自动化浏览器，非真机）
+lab:
+  path: examples/go-runtime/labs/acceptance
+  commands:
+    - pnpm labs:acceptance
+    - cd examples/go-runtime && go test -race ./labs/acceptance -run TestResourceAuthorization -v
+    - pnpm test:e2e --grep auth
+related:
+  - 请求与服务边界
+  - 贯穿全链路的可靠性与安全
+sourceRefs:
+  - title: OWASP Authorization Cheat Sheet
+    url: https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html
+    kind: official
+    publisher: OWASP
+    version: 在线活文档
+    verifiedAt: '2026-09-20'
+    note: 核对默认拒绝、每次请求的权限校验与资源授权原则。
+---
+
+## 先说人话
+
+餐厅菜单上没有“取走别人预订的菜”，不代表有人直接向窗口要菜时应该给他。窗口仍然要核对这份菜属于谁。
+
+类比边界：实验中的姓名标签只是演示。生产不能相信客户端自报身份，要先通过真实认证，再根据资源关系授权。
+
+## 问题与系统不变量
+
+Bob 的笔记只允许 Bob 读取。每次读取都必须检查可信身份和资源归属，拒绝响应不得泄露笔记内容；修复也不能让合法用户无法访问。
+
+实验固定一个 `bob-note` 资源。错误模式只检查是否有演示身份；修复模式进一步检查所有者。页面不提供普通的跨用户读取入口，但实验按钮主动发出越权请求。
+
+## 复现错误
+
+运行 `pnpm labs:acceptance`，打开 `http://127.0.0.1:8091`，点击“复现资源越权”。应看到 Alice 收到 200，正文包含 Bob 的演示笔记，不变量失败。
+
+也可在本机复现：
+
+```bash
+curl -i -H 'X-Demo-User: alice' 'http://127.0.0.1:8091/api/documents/bob-note?mode=broken'
+```
+
+## 修复与验证
+
+点击“验证权限修复”，同时检查 Alice 为 403、Bob 为 200、无身份为 401，且拒绝正文不包含笔记内容。
+
+```bash
+pnpm exec playwright install chromium
+pnpm build
+pnpm test:e2e --grep auth
+cd examples/go-runtime
+go test -race ./labs/acceptance -run TestResourceAuthorization -v
+```
+
+服务端实现位于 `server.go` 的 `/api/documents/{id}` 处理器。测试既覆盖拒绝，也覆盖合法访问和未知演示身份，避免“所有人都被拒绝”被误判为修复成功。
+
+## 异常与恢复
+
+- 无身份或不在演示用户集合中：返回 401。
+- 已识别的 Alice 访问 Bob 资源：修复模式返回 403。
+- 不存在的资源：返回 404。
+- 非法模式：返回 400。
+
+此实验使用 403 让学习者清楚观察归属拒绝。实际产品可能统一使用 404 减少资源存在性泄露，策略需与产品和安全要求一致。
+
+## 证据与排查
+
+检查 Network 中实际发送的身份、资源路径和状态码，同时查看响应体。不能只看页面显示“无权限”，也不能只看状态码而忽略正文泄露。
+
+页面输出包含三类调用结果。记录版本和环境，再将拒绝路径与成功路径填入[验收模板](/docs/playbooks)。
+
+## 适用边界
+
+`X-Demo-User` 是可伪造的标签。即使修复模式通过，改成 Bob 的标签仍可访问，因为本实验**没有实现身份认证**。它仅隔离演示资源授权这一层，不能证明登录、Session、JWT、租户隔离或生产接口安全。
+
+服务只监听回环地址。不要接入真实数据，不要对外开放故意保留的错误模式。
+
+继续阅读[请求与服务边界](/docs/fullstack-lifecycle/request-and-service)和[可靠性与安全](/docs/fullstack-lifecycle/reliability-and-security)。
+
+## 完成检查表
+
+- 能绕过界面复现错误模式的越权。
+- 修复模式拒绝 Alice，且不返回笔记内容。
+- Bob 正常访问，匿名和未知身份被拒绝。
+- 能区分认证、资源授权和界面权限控制。
+- 不把演示身份标签当成生产认证方案。

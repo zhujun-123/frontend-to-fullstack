@@ -25,6 +25,11 @@ const requiredVerifiedSections = [
   '完成检查表',
 ] as const;
 
+const requiredPracticeSections = [
+  '先说人话', '问题与系统不变量', '复现错误', '修复与验证',
+  '异常与恢复', '证据与排查', '适用边界', '完成检查表',
+] as const;
+
 type ParsedDocument = {
   absolutePath: string;
   relativePath: string;
@@ -104,6 +109,8 @@ for (const document of documents) {
 
   if (document.maturity !== 'verified') continue;
 
+  const isPractice = document.frontmatter.type === 'practice';
+
   const lastVerified = document.frontmatter.lastVerified;
   const testedWith = document.frontmatter.testedWith;
   const lab = document.frontmatter.lab as { path?: unknown; commands?: unknown } | undefined;
@@ -116,8 +123,9 @@ for (const document of documents) {
   } else {
     const labPath = path.resolve(root, lab.path);
     if (!fs.existsSync(labPath)) errors.push(`${document.relativePath}: Lab 路径不存在 ${lab.path}`);
-    if (!lab.commands.some((command) => typeof command === 'string' && command.includes('go test'))) {
-      errors.push(`${document.relativePath}: Lab 命令至少需要一个 go test 入口`);
+    const requiredCommand = isPractice ? 'pnpm test:e2e' : 'go test';
+    if (!lab.commands.some((command) => typeof command === 'string' && command.includes(requiredCommand))) {
+      errors.push(`${document.relativePath}: Lab 命令至少需要一个 ${requiredCommand} 入口`);
     }
   }
 
@@ -131,13 +139,13 @@ for (const document of documents) {
     });
   }
 
-  for (const section of requiredVerifiedSections) {
+  for (const section of isPractice ? requiredPracticeSections : requiredVerifiedSections) {
     if (!sectionExists(document.body, section)) {
       errors.push(`${document.relativePath}: verified 缺少章节“${section}”`);
     }
   }
 
-  if (!document.body.includes('<AnalogyStory')) {
+  if (!isPractice && !document.body.includes('<AnalogyStory')) {
     errors.push(`${document.relativePath}: verified 缺少 AnalogyStory 生动比喻`);
   }
 
@@ -185,5 +193,5 @@ if (errors.length > 0) {
 }
 
 console.log(
-  `内容校验通过：${maturityCounts.verified} 篇已验证、${maturityCounts.reviewed} 篇已校对、${frontendGoMappings.length} 条概念映射，${warnings.length} 个警告。`,
+  `内容校验通过：${maturityCounts.verified} 篇 Go 原理已验证、${maturityCounts.reviewed} 篇 Go 原理已校对、${documents.filter((document) => document.frontmatter.type === 'practice' && document.maturity === 'verified').length} 篇实践课已验证、${frontendGoMappings.length} 条概念映射，${warnings.length} 个警告。`,
 );

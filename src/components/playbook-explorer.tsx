@@ -9,6 +9,7 @@ import {
   type EvidenceType,
   type PlaybookStage,
 } from '@/data/fullstack-playbooks';
+import { buildAcceptanceTemplate } from '@/lib/acceptance-template';
 
 type StageFilter = '全部阶段' | PlaybookStage;
 type EvidenceFilter = '全部材料' | EvidenceType;
@@ -19,6 +20,7 @@ export function PlaybookExplorer() {
   const [query, setQuery] = useState('');
   const [activeId, setActiveId] = useState(fullstackPlaybooks[0].id);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copyError, setCopyError] = useState<string | null>(null);
 
   const filteredPlaybooks = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('zh-CN');
@@ -46,9 +48,15 @@ export function PlaybookExplorer() {
     filteredPlaybooks.find((playbook) => playbook.id === activeId) ?? filteredPlaybooks[0];
 
   async function copyPrompt(id: string, prompt: string) {
-    await navigator.clipboard.writeText(prompt);
-    setCopiedId(id);
-    window.setTimeout(() => setCopiedId((current) => (current === id ? null : current)), 1800);
+    setCopyError(null);
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopiedId(id);
+      window.setTimeout(() => setCopiedId((current) => (current === id ? null : current)), 1800);
+    } catch {
+      setCopiedId(null);
+      setCopyError('复制失败，请在下方展开内容后手动选择复制。');
+    }
   }
 
   return (
@@ -133,6 +141,7 @@ export function PlaybookExplorer() {
                 {copiedId === activePlaybook.id ? '已复制' : '复制提示词'}
               </button>
             </header>
+            {copyError ? <p role="alert">{copyError}</p> : null}
 
             <section className="playbook-when">
               <h4>什么时候使用</h4>
@@ -174,6 +183,25 @@ export function PlaybookExplorer() {
                 </ul>
               </section>
             </div>
+
+            <section className="playbook-prompt" aria-label="验收证据模板">
+              <div className="playbook-section-heading">
+                <h4>把完成标准变成证据</h4>
+                <button
+                  className="playbook-copy-button"
+                  type="button"
+                  onClick={() => copyPrompt(`${activePlaybook.id}-acceptance`, buildAcceptanceTemplate(activePlaybook))}
+                >
+                  {copiedId === `${activePlaybook.id}-acceptance` ? '验收模板已复制' : '复制验收模板'}
+                </button>
+              </div>
+              <p>逐项记录实现位置、验证动作和真实结果。模板默认全部未验证。</p>
+              <details>
+                <summary>预览验收模板 / 手动复制</summary>
+                <pre>{buildAcceptanceTemplate(activePlaybook)}</pre>
+              </details>
+              <Link href="/docs/ai-acceptance">阅读验收指南与三个全栈实验 →</Link>
+            </section>
 
             <section className="playbook-pitfalls">
               <h4>常见误区</h4>

@@ -4,6 +4,8 @@
 
 ## 全量校验
 
+浏览器与 Go 联合验收实验见 [`labs/acceptance/README.md`](./labs/acceptance/README.md)，使用独立的本地入口，不加入原有 pprof 服务。
+
 ```bash
 go version
 go vet ./...

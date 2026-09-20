@@ -22,6 +22,8 @@
 
 `reviewed` 表示解释已经过官方来源校对但没有独立 Lab；`outline` 只作为概念索引，不作为完成专题。
 
+已验证的 `type: practice` 浏览器 / 全栈实践课使用另一套章节：先说人话、问题与系统不变量、复现错误、修复与验证、异常与恢复、证据与排查、适用边界、完成检查表。必须提供真实 Lab 路径、验证环境和 `pnpm test:e2e` 命令；涉及 Go 行为时还要运行相应 Go 测试。不得仅为绕过原理专题要求而更改内容类型。
+
 ## Frontmatter
 
 ```yaml
@@ -74,6 +76,8 @@ pnpm build
 pnpm labs:vet
 pnpm labs:test
 pnpm labs:race
+pnpm exec playwright install chromium
+pnpm test:e2e
 ```
 
 提交 Pull Request 前，请确认没有引入未注明来源的大段第三方内容。

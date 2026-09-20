@@ -23,6 +23,8 @@
 - Go 1.26.5 Runtime Labs 与本地 pprof / expvar 实验服务
 - 12 条覆盖接手、开发、数据、发布和生产排障的任务配方
 - 任务配方支持按阶段、输入材料筛选和一键复制
+- 12 条任务配方均可复制带版本、环境、操作与实际结果的验收模板，默认全部未验证
+- AI 全栈交付验收指南与 3 个浏览器 + Go 实验：请求竞态、幂等重试、资源授权
 - 基于 localStorage 的学习进度
 - 分类整理的官方文档和经过许可证筛选的 GitHub 学习资源
 
@@ -56,7 +58,13 @@ pnpm build
 pnpm labs:vet
 pnpm labs:test
 pnpm labs:race
+pnpm exec playwright install chromium
+pnpm test:e2e
 ```
+
+浏览器测试使用上面的 `pnpm build` 产物，并自动启动站点（3210）和实验服务（8091）。请先确保两个端口空闲。当前覆盖 Chromium，失败时保留 Trace 与 HTML 报告。
+
+单独体验实验：运行 `pnpm labs:acceptance`，打开 <http://127.0.0.1:8091>。服务只监听本机，包含故意错误模式；演示身份可伪造，订单仅存内存，请勿部署。详细说明见 [`labs/acceptance/README.md`](./examples/go-runtime/labs/acceptance/README.md)。
 
 ## 内容约定
 
@@ -74,6 +82,8 @@ pnpm labs:race
 - `sourceRefs`：参考来源，可附来源类型、发布方、版本、核验日期和适用说明
 
 `verified` 专题还必须包含系统不变量、当前实现、类比范围与失效边界、正常实验、错误边界、生产故障和证据化排查。第三方资料只作为问题发现和学习索引，机制结论优先回到规范、官方文档和固定版本源码。
+
+`type: practice` 的已验证实践课使用独立检查契约：复现错误、修复与验证、异常与恢复、证据与排查、适用边界和完成检查表，并提供 `pnpm test:e2e` 入口。原有 Go 原理专题仍要求 Go 版本章节和 `go test`，没有降低验证标准。
 
 Go 实验说明见 [`examples/go-runtime/README.md`](./examples/go-runtime/README.md)。
 
