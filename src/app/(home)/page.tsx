@@ -2,6 +2,12 @@ import Link from 'next/link';
 
 const supportingPaths = [
   {
+    label: '交付验收',
+    title: '证明 AI 做对了什么',
+    description: '把完成标准变成证据，动手复现请求竞态、重复提交和资源越权。',
+    href: '/docs/ai-acceptance',
+  },
+  {
     label: '任务配方',
     title: '把 AI 带进真实工作现场',
     description: '接手项目、改接口、查日志、审流水线，都从真实证据和完成标准开始。',
@@ -69,7 +75,11 @@ export default function HomePage() {
             </div>
             <div>
               <dt>已验证专题</dt>
-              <dd>10 篇</dd>
+              <dd>10 篇 Go 原理</dd>
+            </div>
+            <div>
+              <dt>全栈验收实验</dt>
+              <dd>3 个场景</dd>
             </div>
             <div>
               <dt>已校对专题</dt>

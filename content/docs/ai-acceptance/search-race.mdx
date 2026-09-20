@@ -1,0 +1,95 @@
+---
+title: 实验一：旧请求覆盖新结果
+description: 通过真实浏览器请求复现乱序覆盖，再验证请求序号、AbortController 和 Go Context 的不同职责。
+type: practice
+maturity: verified
+summary: 取消可以减少无用工作，请求序号决定哪个结果仍有资格更新界面；两者不能互相替代。
+firstPrinciple: 异步完成顺序不等于用户意图顺序，结果提交必须校验它是否仍属于当前任务。
+frontendAnalogy: 搜索框已经输入新关键词，旧请求晚到却覆盖了新结果。
+lastVerified: '2026-09-20'
+testedWith:
+  - Go 1.26.5 darwin/arm64
+  - Playwright Chromium（自动化浏览器，非真机）
+lab:
+  path: examples/go-runtime/labs/acceptance
+  commands:
+    - pnpm labs:acceptance
+    - cd examples/go-runtime && go test -race ./labs/acceptance -run TestCancellationReachesSearch -v
+    - pnpm test:e2e --grep search
+related:
+  - AbortController 与 Context
+  - Promise 与 Goroutine
+sourceRefs:
+  - title: MDN AbortController
+    url: https://developer.mozilla.org/en-US/docs/Web/API/AbortController
+    kind: official
+    publisher: MDN
+    version: Web API 活文档
+    verifiedAt: '2026-09-20'
+    note: 核对 AbortController 对 Fetch 的取消作用；不推导事务回滚保证。
+  - title: Go Request.Context
+    url: https://pkg.go.dev/net/http@go1.26.5#Request.Context
+    kind: official
+    publisher: Go Team
+    version: Go 1.26.5
+    verifiedAt: '2026-09-20'
+    note: 入站请求在客户端断开等条件下取消 Context，处理函数需要主动使用该信号。
+---
+
+## 先说人话
+
+客人先点咖啡，随后改成茶。咖啡做得慢，最后送来，也不能把客人已经改好的订单重新变成咖啡。订单序号决定哪个结果有效，通知厨房停做则减少浪费。
+
+类比边界：通知厨房不保证菜没做完；网络取消也不能保证下游没有执行。正确显示与节约资源需要分别验证。
+
+## 问题与系统不变量
+
+不变量是“只有最新一次查询的结果能更新界面”。实验页面先发送延迟 600ms 的旧关键词请求，再发送不延迟的新关键词请求。
+
+错误模式收到什么就渲染什么。修复模式取消旧 Fetch，同时检查请求序号。Go 搜索处理函数等待时监听请求 Context，收到取消后退出并增加取消计数。
+
+## 复现错误
+
+在仓库根目录执行 `pnpm labs:acceptance`，打开 `http://127.0.0.1:8091`，点击“复现搜索错误”。
+
+应观察到新关键词先渲染，随后被旧关键词覆盖；输出中的 `finalQuery` 为“旧关键词”，`invariantPassed` 为 `false`。如果网络失败导致实验未完成，应先解决执行错误，不能把它视为成功复现。
+
+## 修复与验证
+
+点击“验证搜索修复”，检查最终结果为“新关键词”、事件中包含旧请求取消。实现位于 `examples/go-runtime/labs/acceptance/web/app.js` 的 `search`，服务端位于同目录上级的 `server.go`。
+
+```bash
+pnpm exec playwright install chromium
+pnpm build
+pnpm test:e2e --grep search
+cd examples/go-runtime
+go test -race ./labs/acceptance -run TestCancellationReachesSearch -v
+```
+
+浏览器测试还会模拟一个忽略取消信号、仍然返回旧结果的任务，单独验证序号保护。这避免“只要 abort 就永远不会有旧结果”的错误结论。
+
+## 异常与恢复
+
+- 请求失败：显示实验执行失败，按钮恢复可点击，不标记通过。
+- 取消发生在任务完成之后：取消本身不再提供保护，仍由序号判断结果是否有效。
+- 服务端没有使用 Context：浏览器停止等待不代表后台工作已经终止；需要查服务端证据。
+
+## 证据与排查
+
+打开浏览器 Network，观察两次请求的顺序、耗时与取消状态。页面的渲染事件证明界面行为；`GET /api/stats` 的 `cancelledSearches` 是当前进程累计值。
+
+不能用累计计数证明某一个请求一定取消。独立 Go 测试创建全新服务，在请求进入处理器之后才取消客户端，随后检查该服务的计数从 0 变为 1。
+
+## 适用边界
+
+本实验验证原生 Fetch、请求序号和 Go HTTP 取消传播。没有模拟数据库驱动、代理缓冲、Safari、移动端或实际业务搜索；不能据此宣布这些环境已通过。既有 Go Runtime Labs 保持原有验证方式。
+
+继续阅读 [AbortController 与 Context](/docs/frontend-to-go/abort-controller-vs-context) 和 [Promise 与 Goroutine](/docs/frontend-to-go/promise-vs-goroutine)。
+
+## 完成检查表
+
+- 能稳定复现旧结果覆盖，并解释顺序为何不同。
+- 修复后最新查询保持显示。
+- 忽略取消的任务仍不能覆盖当前结果。
+- Go 测试证明 Context 取消确实到达处理器。
+- 记录提交、浏览器版本、运行命令和输出。
